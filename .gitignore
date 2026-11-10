@@ -1,0 +1,5 @@
+.DS_Store
+.obsidian
+.venv/
+# throwaway benchmark code; results live in docs/spikes/
+/spikes/
