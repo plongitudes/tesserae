@@ -12,14 +12,14 @@ Modelled on ShotGrid's EventLog. Each change to an issue appends one event, and 
   "attr": "status", "old_value": "in-progress", "new_value": "done" }
 ```
 
-Collections log one element per event with `null` on the absent side: a label added is `labels: null → "auth"`, a link removed is `blocks: "tess-9f2" → null`. Links are recorded on the issue holding them: the dependent for `blocks`, the child for `parent`. Values are JSON, so numbers stay numbers. Large text fields log content hashes, not bodies ([ADR-0014](0014-content-addressed-text.md)).
+Collections log one element per event with `null` on the absent side: a label added is `labels: null → "auth"`, a link removed is `blocked_by: "tess-9f2" → null`. Links are recorded on the issue holding them: `blocked_by` on the dependent, `parent` (a scalar) on the child. Values are JSON, so numbers stay numbers. Large text fields log content hashes, not bodies ([ADR-0014](0014-content-addressed-text.md)).
 
 ## Rules
 
 - Only the store writes events, inside the same transaction as the change, by diffing the typed patch. No caller can forget.
 - The issue row is the source of truth for queries; events sit alongside it and are never replayed to build state (this is not event sourcing).
 - Creation logs nothing: `created_at`/`created_by` on the issue are the record. Comments are their own records, not events, and are immutable in v1.
-- `changed_by` is `TESS_ACTOR` if set; else `claude:<session8>` when running under Claude Code ([ADR-0019](0019-agent-context-integration.md)); else git's `user.name`.
+- `changed_by` is `TESS_ACTOR` if set to a non-empty value; else `claude:<session8>` when running under Claude Code ([ADR-0019](0019-agent-context-integration.md)); else git's `user.name`.
 - Events sync as one append-only file each (`events/<issue>/<event-id>.json`), so they never conflict.
 
 ## Consequences

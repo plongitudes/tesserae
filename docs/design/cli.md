@@ -11,6 +11,9 @@ tess create TITLE [flags]              create an issue; prints its ID
     -t, --type TYPE                    task (default) | bug | feature | epic | chore
     -p, --priority 0-4                 default 2
     -d, --description TEXT             or "-" to read stdin
+    --design TEXT                      or "-" to read stdin
+    --acceptance TEXT                  or "-" to read stdin
+    --notes TEXT                       or "-" to read stdin
     -l, --label L                      freeform tag with no specific built-in meaning; user-definable
 										for arbitrary organization, repeat flag to create multiple
 										labels at once.
@@ -24,9 +27,13 @@ tess list [filters]                    everything else
     --status S, --type T, --label L, --assignee A, --parent ID (descendants)
     --blocked                          blocked issues of any status, with their blockers
     -s, --search TEXT                  title/description/notes substring
-    --all                              include done/omit (default: excluded)
+    --all                              include done/omit (default: excluded; retired never shown)
+    --retired                          only retired issues
 
-tess update ID [flags]                 any non-status field; labels via --add-label/--remove-label
+tess update ID [flags]                 any non-status field
+    --title, -t/--type, -p/--priority, -d/--description, --design, --acceptance, --notes,
+    -a/--assignee, --owner, --due DATE, --add-label L, --remove-label L
+                                       text flags take "-" for stdin; an empty value clears a field
 tess status ID... STATUS [-r REASON]   ready | in-progress | pending-review | held | done | omit
                                        (ADR-0018). held/omit need -r. done refuses if blocked unless
                                        --force; done/omit refuse with open children. Prints issues
@@ -53,7 +60,7 @@ Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), 
 
 ## Output
 
-- Human output by default: single-width Unicode status symbols with semantic colour when stdout is a TTY. No emoji (double-width, colour, inconsistent across terminals).
+- Human output by default: single-width Unicode status symbols, always; semantic colour only when stdout is a TTY. No emoji (double-width, colour, inconsistent across terminals).
 
   ```
   ○ ready          ◐ in-progress     ✓ done
@@ -62,7 +69,7 @@ Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), 
   ```
 
   `⊖` is the no-entry road sign; `≈` is "approximately right, not yet confirmed"; `✓`/`✗` are a matched pair. Errors print `error:`, never `✗`, so an omitted issue can't be mistaken for a failure. `⚠` is reserved for warnings.
-- `--json` on every command. Issues are objects with snake_case fields; lists are arrays; mutating commands return the affected issue(s). `status` is the displayed status (incl. derived `waiting`/`ready`), plus a `blocked` boolean.
+- `--json` on every command. Issues are objects with snake_case fields; lists are arrays; mutating commands return the affected issue(s), and `status`/`retire` return `{"updated": [...], "newly_unblocked": [...]}`. `status` is the displayed status (incl. derived `waiting`/`ready`), plus a `blocked` boolean. Exact shapes: [acceptance/README.md](../../acceptance/README.md).
 - Every `--help` has examples. Short factual notes may go to stderr when true (e.g. unsynced changes), never on every command.
 - Errors go to stderr. With `--json`, stderr is `{"error": {"code": "...", "message": "...", "hint": "..."}}` and `code` is stable (`not_found`, `ambiguous_id`, `cycle`, `retired`, ...). Exit status is non-zero.
 - Partial IDs are accepted everywhere an ID is.

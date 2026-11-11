@@ -8,11 +8,11 @@ date: 2026-11-09
 Based on [the research note](../research/2026-11-agent-context-integration.md). We adopt only what current Anthropic guidance recommends, and nothing it recommends against.
 
 1. **Agent-grade CLI** (no standing context): example-rich `--help` on every command; `tess` with no arguments prints ~10 lines of orientation; JSON errors carry a stable `code` and a one-line `hint`; short factual notes on stderr only when true (e.g. "3 local changes not yet synced").
-2. **Actor detection in the binary**: if `TESS_ACTOR` is unset and `CLAUDECODE=1`, `changed_by` is `claude:<first 8 of CLAUDE_CODE_SESSION_ID>`. Supersedes the plugin-set identity in [ADR-0013](0013-field-level-event-log.md).
+2. **Actor detection in the binary**: if `TESS_ACTOR` is unset or empty and `CLAUDECODE=1`, `changed_by` is `claude:<first 8 of CLAUDE_CODE_SESSION_ID>`. Supersedes the plugin-set identity in [ADR-0013](0013-field-level-event-log.md).
 3. **One committed skill**, `.claude/skills/tess/SKILL.md`: ~300-character description, 40–60 line body (work loop, JSON fields, "run `tess sync` when you finish a unit of work"), `allowed-tools: Bash(tess *)`.
 4. **SessionStart hook** in `.claude/settings.json`: on startup/resume runs `tess sync` with a short timeout and prints 3–6 lines of facts, never instructions (command-style injected text can trip prompt-injection defences); after compaction, prints the facts again without syncing.
 5. **SessionEnd hook**: starts a detached `tess sync` and exits (SessionEnd gets ~1.5 s). Best effort; the skill's "sync when done" is the main path.
-6. **`tess setup claude [--check|--remove]`** writes 3–5 and a `Bash(tess *)` allow rule, and refuses to install hooks twice.
+6. **`tess setup claude [--check|--remove]`** writes 3–5 and a `Bash(tess *)` allow rule. Re-running is a no-op: it never duplicates hooks or rules, and changes no file that is already current.
 
 Standing context is ~150–250 tokens, against 1–2k for the old `bd prime`.
 

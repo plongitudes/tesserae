@@ -10,8 +10,8 @@ A solo developer on several machines (including remote/cloud Claude sessions), u
 
 Issue fields:
 
-- Core: `ID`, `Title`, `Description`, `Status`, `Priority` (0–4, 0 highest), `IssueType`, `Assignee`, `CreatedAt`, `UpdatedAt`, `ClosedAt`, `Labels`, `Dependencies`, `Comments`.
-- Extended: `Design`, `AcceptanceCriteria`, `Notes`, `EstimatedMinutes`, `CreatedBy`, `Owner`, `StatusReason` (why held, omitted, or done), `DueAt`.
+- Core: `ID`, `Title`, `Description`, `Status`, `Priority` (0–4, 0 highest), `IssueType`, `Assignee`, `CreatedAt`, `UpdatedAt`, `Labels`, `Dependencies`, `Comments`.
+- Extended: `Design`, `AcceptanceCriteria`, `Notes`, `CreatedBy`, `Owner`, `StatusReason` (why held, omitted, or done), `DueAt`.
 - `RetiredAt`: set when an issue is retired ([ADR-0010](adr/0010-retire-instead-of-delete.md)); null means live.
 - Probably: `ExternalRef` (an issue's identity in a remote tracker; unique).
 
