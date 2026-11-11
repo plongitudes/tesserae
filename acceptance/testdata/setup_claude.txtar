@@ -1,0 +1,51 @@
+# tess setup claude writes the committed skill and hooks (ADR-0019).
+
+exec git init -q .
+exec tess init --prefix t
+
+# An existing settings file must survive.
+mkdir .claude
+cp existing.json .claude/settings.json
+
+exec tess setup claude --json
+json stdout .written has .claude/skills/tess/SKILL.md
+json stdout .written has .claude/settings.json
+exists .claude/skills/tess/SKILL.md
+
+# The skill: frontmatter with a short description and the tess allow rule.
+grep '^name: tess$' .claude/skills/tess/SKILL.md
+grep '^description: ' .claude/skills/tess/SKILL.md
+grep 'Bash\(tess \*\)' .claude/skills/tess/SKILL.md
+grep 'tess sync' .claude/skills/tess/SKILL.md
+
+# Settings: our hooks and allow rule added, existing content kept.
+json .claude/settings.json .permissions.allow has 'Bash(npm test)'
+json .claude/settings.json .permissions.allow has 'Bash(tess *)'
+grep SessionStart .claude/settings.json
+grep SessionEnd .claude/settings.json
+json .claude/settings.json .env.KEEP_ME yes
+
+# Idempotent: running again changes nothing and never duplicates hooks.
+cp .claude/settings.json before.json
+cp .claude/skills/tess/SKILL.md before.md
+exec tess setup claude --json
+json stdout .written []
+cmp .claude/settings.json before.json
+cmp .claude/skills/tess/SKILL.md before.md
+
+# --check: exit 0 when installed and current.
+exec tess setup claude --check
+
+# --remove takes out only what tess added.
+exec tess setup claude --remove --json
+! exists .claude/skills/tess/SKILL.md
+json .claude/settings.json .permissions.allow '["Bash(npm test)"]'
+json .claude/settings.json .env.KEEP_ME yes
+! grep 'tess sync' .claude/settings.json
+! exec tess setup claude --check
+
+-- existing.json --
+{
+  "permissions": { "allow": ["Bash(npm test)"] },
+  "env": { "KEEP_ME": "yes" }
+}

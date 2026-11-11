@@ -1,0 +1,69 @@
+# Four link types, one stored direction, inverse wording (ADR-0015).
+
+exec git init -q .
+exec tess init --prefix t
+capture A -- tess create 'A' --json
+capture B -- tess create 'B' --json
+
+# blocked-by is blocks, reversed; both normalise to the same link.
+exec tess link $B blocked-by $A --json
+json stdout .from $A
+json stdout .type blocks
+json stdout .to $B
+exec tess show $A --json
+json stdout .links.blocks '["'$B'"]'
+exec tess show $B --json
+json stdout .links.blocked_by '["'$A'"]'
+
+# Adding the same link again in either wording doesn't duplicate it.
+exec tess link $A blocks $B --json
+exec tess show $A --json
+json stdout .links.blocks|length 1
+
+# unlink accepts either wording.
+exec tess unlink $B blocked-by $A --json
+exec tess show $A --json
+json stdout .links.blocks []
+
+# related is symmetric.
+exec tess link $A related $B --json
+exec tess show $A --json
+json stdout .links.related '["'$B'"]'
+exec tess show $B --json
+json stdout .links.related '["'$A'"]'
+
+# discovered-from is directed.
+capture D -- tess create 'Found while working on A' --json
+exec tess link $D discovered-from $A --json
+json stdout .from $D
+json stdout .type discovered-from
+json stdout .to $A
+exec tess show $D --json
+json stdout .links.discovered_from '["'$A'"]'
+exec tess show $A --json
+json stdout .links.discovered '["'$D'"]'
+
+# Old and unknown types are rejected.
+! exec tess link $A duplicates $B --json
+json stderr .error.code invalid_argument
+! exec tess link $A supersedes $B --json
+json stderr .error.code invalid_argument
+
+# Linking to a missing issue.
+! exec tess link $A blocks t-zzzzzzzz --json
+json stderr .error.code not_found
+
+# create --blocked-by adds blocks links.
+capture E -- tess create 'Needs A and B' -b $A -b $B --json
+exec tess show $E --json
+json stdout .links.blocked_by|length 2
+json stdout .status waiting
+
+# tree shows the neighbourhood.
+exec tess tree $E --json
+json stdout .id $E
+json stdout .blocked_by[*].id has $A
+json stdout .blocked_by[*].id has $B
+exec tess tree $E
+stdout $A
+stdout $B

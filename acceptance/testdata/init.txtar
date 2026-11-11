@@ -1,0 +1,53 @@
+# init creates the database in git's common dir and nothing in the working tree (ADR-0003).
+
+# Outside a git repo: error.
+! exec tess init --prefix t --json
+json stderr .error.code not_a_git_repo
+
+exec git init -q repo
+cd repo
+
+# Before init, commands say so.
+! exec tess list --json
+json stderr .error.code not_initialized
+stderr 'tess init'
+
+exec tess init --prefix t --json
+json stdout .prefix t
+stdout '"database": *"[^"]*/\.git/'
+getjson DB stdout .database
+exists $DB
+! exists .tess
+! exists .beads
+
+# The working tree is untouched.
+exec git status --porcelain
+! stdout .
+
+# Twice: error.
+! exec tess init --prefix t --json
+json stderr .error.code already_initialized
+
+# Prefix defaults to the repo directory name.
+cd ..
+exec git init -q myproj
+cd myproj
+exec tess init --json
+json stdout .prefix myproj
+
+# A worktree sees the same database.
+cd ../repo
+exec git commit -q --allow-empty -m init
+exec git worktree add -q ../wt
+capture A -- tess create 'Made in main checkout' --json
+cd ../wt
+exec tess show $A --json
+json stdout .title 'Made in main checkout'
+capture B -- tess create 'Made in worktree' --json
+cd ../repo
+exec tess show $B --json
+json stdout .title 'Made in worktree'
+
+# tess sync is a no-op in loop 1.
+exec tess sync
+stderr 'sync: not available yet'

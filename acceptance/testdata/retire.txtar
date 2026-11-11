@@ -1,0 +1,45 @@
+# Retire instead of delete (ADR-0010).
+
+exec git init -q .
+exec tess init --prefix t
+capture A -- tess create 'Mistake' --json
+capture B -- tess create 'Depends on the mistake' -b $A --json
+exec tess show $B --json
+json stdout .status waiting
+
+exec tess retire $A -r 'created by accident' --json
+json stdout .updated[0].retired_at 2026-01-01T00:00:00Z
+json stdout .newly_unblocked[0].id $B
+
+# Gone from lists and the graph; dependents unblock.
+exec tess list --json
+! json stdout .[*].id has $A
+exec tess list --all --json
+! json stdout .[*].id has $A
+exec tess list --retired --json
+json stdout .[*].id has $A
+exec tess show $B --json
+json stdout .status ready
+json stdout .links.blocked_by []
+
+# Exact ID still finds it; partial IDs don't.
+exec tess show $A --json
+json stdout .retired_at 2026-01-01T00:00:00Z
+slice AHASH $A 2
+! exec tess show $AHASH --json
+json stderr .error.code not_found
+
+# Retired issues can't be changed.
+! exec tess update $A --title 'x' --json
+json stderr .error.code retired
+! exec tess status $A done --json
+json stderr .error.code retired
+! exec tess link $A blocks $B --json
+json stderr .error.code retired
+
+# Restore brings it back, links included.
+exec tess restore $A --json
+json stdout .retired_at null
+exec tess show $B --json
+json stdout .status waiting
+json stdout .links.blocked_by '["'$A'"]'

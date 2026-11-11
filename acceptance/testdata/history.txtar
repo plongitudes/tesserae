@@ -1,0 +1,98 @@
+# Field-level event log (ADR-0013, ADR-0014) and actor identity (ADR-0019).
+
+exec git init -q .
+exec tess init --prefix t
+capture A -- tess create 'Tracked' --json
+
+# Creation logs nothing.
+exec tess show $A --history --json
+json stdout .history []
+
+env TESS_NOW=2026-01-02T00:00:00Z
+exec tess status $A in-progress --json
+exec tess show $A --history --json
+json stdout .history|length 1
+json stdout .history[0].attr status
+json stdout .history[0].old_value ready
+json stdout .history[0].new_value in-progress
+json stdout .history[0].changed_by tester
+json stdout .history[0].changed_at 2026-01-02T00:00:00Z
+
+# Labels log one element per event, null on the absent side.
+env TESS_NOW=2026-01-02T00:00:01Z
+exec tess update $A --add-label ui --json
+env TESS_NOW=2026-01-02T00:00:02Z
+exec tess update $A --remove-label ui --json
+exec tess show $A --history --json
+json stdout .history[1].attr labels
+json stdout .history[1].old_value null
+json stdout .history[1].new_value ui
+json stdout .history[2].old_value ui
+json stdout .history[2].new_value null
+
+# Scalars log old and new; numbers stay numbers.
+env TESS_NOW=2026-01-02T00:00:03Z
+exec tess update $A -p 0 --json
+exec tess show $A --history --json
+json stdout .history[3].attr priority
+json stdout .history[3].old_value 2
+json stdout .history[3].new_value 0
+
+# Large text fields log content hashes, not bodies.
+env TESS_NOW=2026-01-02T00:00:04Z
+exec tess update $A -d 'A long description' --json
+exec tess show $A --history --json
+json stdout .history[4].attr description
+json stdout .history[4].new_value|length 64
+! json stdout .history[4].new_value 'A long description'
+json stdout .description 'A long description'
+
+# Links: blocked_by on the dependent, parent on the child (scalar).
+env TESS_NOW=2026-01-02T00:00:05Z
+capture B -- tess create 'Blocker' --json
+env TESS_NOW=2026-01-02T00:00:06Z
+capture P -- tess create 'Parent' --json
+env TESS_NOW=2026-01-02T00:00:07Z
+exec tess link $B blocks $A --json
+env TESS_NOW=2026-01-02T00:00:08Z
+exec tess link $P parent-of $A --json
+exec tess show $A --history --json
+json stdout .history[5].attr blocked_by
+json stdout .history[5].old_value null
+json stdout .history[5].new_value $B
+json stdout .history[6].attr parent
+json stdout .history[6].old_value null
+json stdout .history[6].new_value $P
+
+# Actor: TESS_ACTOR wins; then Claude Code's session; then git user.name.
+env TESS_ACTOR=agent-7
+env TESS_NOW=2026-01-02T00:00:09Z
+exec tess update $A --title 'Renamed' --json
+exec tess show $A --history --json
+json stdout .history[7].changed_by agent-7
+env TESS_ACTOR=
+env CLAUDECODE=1
+env CLAUDE_CODE_SESSION_ID=abcdef1234567890
+env TESS_NOW=2026-01-02T00:00:10Z
+exec tess update $A --title 'Renamed again' --json
+exec tess show $A --history --json
+json stdout .history[8].changed_by claude:abcdef12
+env TESS_NOW=2026-01-02T00:00:11Z
+capture C -- tess create 'Made by an agent' --json
+exec tess show $C --json
+json stdout .created_by claude:abcdef12
+
+# Comments are records, not events.
+env TESS_NOW=2026-01-02T00:00:12Z
+exec tess comment $A 'Looks good' --json
+json stdout .author claude:abcdef12
+json stdout .text 'Looks good'
+exec tess show $A --history --json
+json stdout .history|length 9
+json stdout .comments[0].text 'Looks good'
+
+# Held issues show their previous status.
+exec tess status $A pending-review --json
+exec tess status $A held -r 'waiting on design' --json
+exec tess show $A --json
+json stdout .previous_status pending-review

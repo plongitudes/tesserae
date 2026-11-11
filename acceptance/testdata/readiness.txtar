@@ -1,0 +1,88 @@
+# One definition of blocked (ADR-0007, ADR-0009, ADR-0016).
+
+exec git init -q .
+exec tess init --prefix t
+env TESS_NOW=2026-01-01T00:00:01Z
+capture BLOCKER -- tess create 'Blocker' --json
+env TESS_NOW=2026-01-01T00:00:02Z
+capture DEP -- tess create 'Dependent' --json
+
+exec tess link $BLOCKER blocks $DEP --json
+exec tess show $DEP --json
+json stdout .status waiting
+json stdout .blocked true
+json stdout .links.blocked_by|length 1
+json stdout .links.blocked_by has $BLOCKER
+
+exec tess ready --json
+json stdout .|length 1
+json stdout .[0].id $BLOCKER
+
+# done refused while blocked, unless --force.
+! exec tess status $DEP done --json
+json stderr .error.code blocked
+exec tess status $DEP done --force --json
+json stdout .updated[0].status done
+exec tess status $DEP ready --json
+
+# An in-progress issue can be blocked; it keeps its status.
+exec tess status $DEP in-progress --json
+exec tess show $DEP --json
+json stdout .status in-progress
+json stdout .blocked true
+exec tess status $DEP ready --json
+
+# Finishing the blocker unblocks, and reports it.
+exec tess status $BLOCKER done --json
+json stdout .newly_unblocked[0].id $DEP
+exec tess show $DEP --json
+json stdout .status ready
+json stdout .blocked false
+
+# Omitting a blocker unblocks too.
+exec tess status $BLOCKER ready --json
+exec tess show $DEP --json
+json stdout .status waiting
+exec tess status $BLOCKER omit -r 'dropped' --json
+json stdout .newly_unblocked[0].id $DEP
+
+# A held ancestor blocks its descendants; they keep their stored status.
+capture EPIC -- tess create 'Epic' -t epic --json
+capture CHILD -- tess create 'Child' --parent $EPIC --json
+capture GRAND -- tess create 'Grandchild' --parent $CHILD --json
+exec tess status $EPIC held -r 'paused' --json
+exec tess show $GRAND --json
+json stdout .status waiting
+json stdout .blocked true
+exec tess status $EPIC ready --json
+exec tess show $GRAND --json
+json stdout .status ready
+
+# A blocked ancestor blocks descendants.
+capture GATE -- tess create 'Gate' --json
+exec tess link $GATE blocks $EPIC --json
+exec tess show $GRAND --json
+json stdout .blocked true
+exec tess unlink $GATE blocks $EPIC --json
+exec tess show $GRAND --json
+json stdout .blocked false
+
+# A parent with open children is waiting, not ready, and not blocked.
+exec tess show $EPIC --json
+json stdout .status waiting
+json stdout .blocked false
+exec tess show $CHILD --json
+json stdout .status waiting
+json stdout .blocked false
+exec tess ready --json
+json stdout .[*].id has $GRAND
+! json stdout .[*].id has $EPIC
+! json stdout .[*].id has $CHILD
+
+# list --blocked lists blocked issues of any status.
+exec tess link $GATE blocks $GRAND --json
+exec tess status $GRAND in-progress --json
+exec tess list --blocked --json
+json stdout .|length 1
+json stdout .[0].id $GRAND
+json stdout .[0].status in-progress

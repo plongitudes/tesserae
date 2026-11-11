@@ -1,0 +1,68 @@
+# create defaults, flags, labels, stdin descriptions, partial IDs.
+
+exec git init -q .
+exec tess init --prefix t
+
+capture A -- tess create 'Plain issue' --json
+idshape $A
+exec tess show $A --json
+json stdout .title 'Plain issue'
+json stdout .type task
+json stdout .priority 2
+json stdout .status ready
+json stdout .blocked false
+json stdout .assignee null
+json stdout .labels []
+json stdout .parent null
+json stdout .ancestors []
+json stdout .created_at 2026-01-01T00:00:00Z
+json stdout .created_by tester
+json stdout .retired_at null
+json stdout .links.blocks []
+json stdout .comments []
+
+# All flags.
+capture B -- tess create 'Full issue' -t bug -p 0 -d 'Steps to reproduce' --design 'Use a view' --acceptance 'ready stays fast' --notes 'Seen twice' -l ui -l auth -a alice --json
+exec tess show $B --json
+json stdout .type bug
+json stdout .priority 0
+json stdout .description 'Steps to reproduce'
+json stdout .design 'Use a view'
+json stdout .acceptance_criteria 'ready stays fast'
+json stdout .notes 'Seen twice'
+json stdout .labels '["auth","ui"]'
+json stdout .assignee alice
+
+# Description from stdin.
+stdin desc.txt
+exec tess create 'From stdin' -d - --json
+getjson C stdout
+exec tess show $C --json
+json stdout .description '"line one\nline two\n"'
+
+# Bad values.
+! exec tess create 'Bad priority' -p 7 --json
+json stderr .error.code invalid_argument
+! exec tess create 'Bad type' -t saga --json
+json stderr .error.code invalid_argument
+! exec tess create --json
+json stderr .error.code invalid_argument
+
+# Plain output prints the ID.
+exec tess create 'Human output'
+stdout '^t-[0-9a-z]{3,}'
+
+# Partial IDs: exact, then unique prefix, then unique substring.
+exec tess show $A --json
+json stdout .id $A
+slice AHASH $A 2
+exec tess show $AHASH --json
+json stdout .id $A
+! exec tess show t- --json
+json stderr .error.code ambiguous_id
+! exec tess show t-zzzzzzzzzz --json
+json stderr .error.code not_found
+
+-- desc.txt --
+line one
+line two

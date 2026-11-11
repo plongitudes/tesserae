@@ -1,0 +1,59 @@
+# tess status: settable values, reasons, guards, and no side effects (ADR-0018).
+
+exec git init -q .
+exec tess init --prefix t
+capture A -- tess create 'Work item' -a alice --json
+
+# Each settable status.
+exec tess status $A in-progress --json
+json stdout .updated[0].status in-progress
+json stdout .updated[0].assignee alice
+exec tess status $A pending-review --json
+json stdout .updated[0].status pending-review
+exec tess status $A held -r 'waiting on vendor' --json
+json stdout .updated[0].status held
+json stdout .updated[0].status_reason 'waiting on vendor'
+
+# show remembers what it was before the hold.
+exec tess show $A --json
+json stdout .previous_status pending-review
+
+exec tess status $A in-progress --json
+json stdout .updated[0].status in-progress
+exec tess status $A done --json
+json stdout .updated[0].status done
+exec tess status $A ready --json
+json stdout .updated[0].status ready
+
+# Status changes never touch the assignee (no side effects).
+exec tess show $A --json
+json stdout .assignee alice
+
+# Reasons are required for held and omit.
+! exec tess status $A held --json
+json stderr .error.code reason_required
+! exec tess status $A omit --json
+json stderr .error.code reason_required
+exec tess status $A omit -r 'no longer needed' --json
+json stdout .updated[0].status omit
+json stdout .updated[0].status_reason 'no longer needed'
+
+# Can't hold a done or omitted issue.
+! exec tess status $A held -r 'x' --json
+json stderr .error.code invalid_transition
+
+# waiting is derived, never settable; unknown values are rejected.
+! exec tess status $A waiting --json
+json stderr .error.code invalid_status
+! exec tess status $A closed --json
+json stderr .error.code invalid_status
+
+# Several IDs at once.
+capture B -- tess create 'Second' --json
+capture C -- tess create 'Third' --json
+exec tess status $B $C in-progress --json
+json stdout .updated|length 2
+
+# update can't change status.
+! exec tess update $B --status done --json
+json stderr .error.code invalid_argument

@@ -1,0 +1,37 @@
+# update changes any non-status field.
+
+exec git init -q .
+exec tess init --prefix t
+capture A -- tess create 'Original' -l keep --json
+
+exec tess update $A --title 'New title' -t feature -p 1 -a bob --owner carol --due 2026-02-01 --json
+json stdout .title 'New title'
+json stdout .type feature
+json stdout .priority 1
+json stdout .assignee bob
+json stdout .owner carol
+json stdout .due_at 2026-02-01T00:00:00Z
+
+stdin notes.txt
+exec tess update $A --notes - --json
+json stdout .notes '"Line\n"'
+exec tess update $A --design 'Use a view' --acceptance 'ready stays fast' --json
+json stdout .design 'Use a view'
+json stdout .acceptance_criteria 'ready stays fast'
+
+exec tess update $A --add-label b --add-label a --remove-label keep --json
+json stdout .labels '["a","b"]'
+
+# Clearing optional fields.
+exec tess update $A -a '' --due '' --json
+json stdout .assignee null
+json stdout .due_at null
+
+# Bad values.
+! exec tess update $A -p 9 --json
+json stderr .error.code invalid_argument
+! exec tess update t-zzzzzzzz --title x --json
+json stderr .error.code not_found
+
+-- notes.txt --
+Line

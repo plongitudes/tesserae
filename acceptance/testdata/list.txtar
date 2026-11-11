@@ -1,0 +1,79 @@
+# list and ready: filters, ordering, flat vs tree output.
+
+exec git init -q .
+exec tess init --prefix t
+env TESS_NOW=2026-01-01T00:00:01Z
+capture EPIC -- tess create 'Auth overhaul' -t epic -p 1 --json
+env TESS_NOW=2026-01-01T00:00:02Z
+capture R1 -- tess create 'Add token refresh' --parent $EPIC -p 1 -l auth -a alice --json
+env TESS_NOW=2026-01-01T00:00:03Z
+capture R2 -- tess create 'Rotate signing keys' --parent $EPIC -p 2 -l auth --json
+env TESS_NOW=2026-01-01T00:00:04Z
+capture TOP -- tess create 'Fix README typo' -p 3 -t chore --json
+env TESS_NOW=2026-01-01T00:00:05Z
+capture OLD -- tess create 'Old work' -p 0 --json
+exec tess status $OLD done --json
+
+# Ordering: priority, then created_at, then id. ready shows only status ready.
+exec tess ready --json
+json stdout .[*].id '["'$R1'","'$R2'","'$TOP'"]'
+exec tess ready -n 2 --json
+json stdout .|length 2
+exec tess status $R2 in-progress --json
+exec tess ready --json
+! json stdout .[*].id has $R2
+
+# list defaults to everything not done/omitted/retired.
+exec tess list --json
+json stdout .|length 4
+! json stdout .[*].id has $OLD
+exec tess list --all --json
+json stdout .|length 5
+
+# Filters.
+exec tess list --status in-progress --json
+json stdout .[*].id '["'$R2'"]'
+exec tess list --status waiting --json
+json stdout .[*].id '["'$EPIC'"]'
+exec tess list --type chore --json
+json stdout .[*].id '["'$TOP'"]'
+exec tess list --label auth --json
+json stdout .|length 2
+exec tess list --assignee alice --json
+json stdout .[*].id '["'$R1'"]'
+exec tess list --parent $EPIC --json
+json stdout .|length 2
+exec tess list -s 'signing' --json
+json stdout .[*].id '["'$R2'"]'
+exec tess update $TOP -d 'mentions tokens in the body' --json
+exec tess list -s 'tokens' --json
+json stdout .[*].id has $TOP
+
+# JSON carries the hierarchy flat.
+exec tess list --parent $EPIC --json
+json stdout .[0].parent $EPIC
+json stdout .[0].ancestors '["'$EPIC'"]'
+
+# Not a TTY, so plain output is flat: one line per result, no headers.
+exec tess ready
+stdout '^○ '$R1' '
+stdout 'Add token refresh'
+! stdout 'Auth overhaul'
+! stdout '^\s'
+
+# --tree forces the hierarchy: the parent appears as a header, results indented.
+exec tess ready --tree
+stdout 'Auth overhaul'
+stdout '^\s+○ '$R1
+stdout '^○ '$TOP
+
+# Status symbols.
+exec tess list --all
+stdout '^⊖ '$EPIC
+stdout '^◐ '$R2
+stdout '^✓ '$OLD
+exec tess status $TOP pending-review --json
+exec tess status $R1 held -r 'x' --json
+exec tess list
+stdout '^≈ '$TOP
+stdout '^❄ '$R1

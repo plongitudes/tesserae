@@ -1,0 +1,50 @@
+# Agent-grade CLI: orientation, help, error shapes (ADR-0019).
+
+exec git init -q .
+exec tess init --prefix t
+
+# No arguments: a short orientation that names the core commands.
+exec tess
+stdout 'tess ready'
+stdout 'tess create'
+stdout 'tess status'
+stdout 'tess sync'
+
+# Every command's --help has examples.
+exec tess create --help
+stdout 'Examples'
+exec tess status --help
+stdout 'Examples'
+stdout 'ready'
+stdout 'pending-review'
+exec tess list --help
+stdout 'Examples'
+exec tess ready --help
+stdout 'Examples'
+exec tess update --help
+stdout 'Examples'
+exec tess link --help
+stdout 'Examples'
+stdout 'blocked-by'
+exec tess show --help
+stdout 'Examples'
+exec tess retire --help
+stdout 'Examples'
+
+# JSON errors: code, message, hint; exit 1.
+! exec tess show t-zzzzzzzz --json
+json stderr .error.code not_found
+stderr '"message"'
+stderr '"hint"'
+! stdout .
+
+# Plain errors start with "error:" and never use the omit symbol.
+! exec tess show t-zzzzzzzz
+stderr '^error: '
+! stderr '✗'
+
+# Unknown commands and flags.
+! exec tess frobnicate --json
+json stderr .error.code invalid_argument
+! exec tess list --frobnicate --json
+json stderr .error.code invalid_argument

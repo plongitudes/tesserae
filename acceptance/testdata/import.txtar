@@ -1,0 +1,83 @@
+# Import from old bd issues.jsonl (README "Other suite decisions").
+
+exec git init -q .
+exec tess init --prefix t
+
+exec tess import old.jsonl --json
+json stdout .imported 7
+json stdout .skipped 0
+
+# IDs, text fields, timestamps, and labels carry over.
+exec tess show bd-a1 --json
+json stdout .id bd-a1
+json stdout .title 'Old epic'
+json stdout .type epic
+json stdout .priority 1
+json stdout .description 'The description'
+json stdout .design 'The design'
+json stdout .labels '["auth","legacy"]'
+json stdout .created_at 2025-06-01T10:00:00Z
+json stdout .created_by olduser
+json stdout .comments[0].text 'An old comment'
+json stdout .comments[0].author olduser
+
+# Old dotted child IDs are kept as-is; parent-child becomes parent.
+exec tess show bd-a1.1 --json
+json stdout .id bd-a1.1
+json stdout .parent bd-a1
+
+# Status mapping.
+exec tess show bd-b2 --json
+json stdout .status in-progress
+json stdout .assignee alice
+exec tess show bd-c3 --json
+json stdout .status held
+json stdout .status_reason 'imported from bd status blocked'
+exec tess show bd-d4 --json
+json stdout .status held
+json stdout .status_reason 'deferred until 2026-03-01'
+exec tess show bd-e5 --json
+json stdout .status done
+json stdout .status_reason 'Fixed in v2'
+exec tess show bd-f6 --json
+json stdout .retired_at 2025-07-01T00:00:00Z
+
+# Link mapping: blocks, related, discovered-from carry over; duplicates -> related.
+exec tess show bd-c3 --json
+json stdout .links.blocked_by '["bd-b2"]'
+exec tess show bd-b2 --json
+json stdout .links.related has bd-a1
+json stdout .links.discovered_from '["bd-a1"]'
+exec tess show bd-d4 --json
+json stdout .links.related '["bd-a1"]'
+
+# Re-importing skips existing IDs; nothing is overwritten.
+exec tess update bd-b2 --title 'Changed locally' --json
+exec tess import old.jsonl --json
+json stdout .imported 0
+json stdout .skipped 7
+exec tess show bd-b2 --json
+json stdout .title 'Changed locally'
+
+# All-or-nothing: a cycle anywhere imports nothing.
+! exec tess import cycle.jsonl --json
+json stderr .error.code cycle
+! exec tess show bd-x1 --json
+json stderr .error.code not_found
+
+# New issues still use the repo prefix.
+capture N -- tess create 'New after import' --json
+idshape $N
+stdout '"id": *"t-'
+
+-- old.jsonl --
+{"id":"bd-a1","title":"Old epic","description":"The description","design":"The design","status":"open","priority":1,"issue_type":"epic","created_at":"2025-06-01T10:00:00Z","created_by":"olduser","updated_at":"2025-06-02T10:00:00Z","labels":["legacy","auth"],"comments":[{"id":1,"issue_id":"bd-a1","author":"olduser","text":"An old comment","created_at":"2025-06-01T11:00:00Z"}]}
+{"id":"bd-a1.1","title":"Old child","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:05:00Z","created_by":"olduser","updated_at":"2025-06-01T10:05:00Z","dependencies":[{"issue_id":"bd-a1.1","depends_on_id":"bd-a1","type":"parent-child","created_at":"2025-06-01T10:05:00Z","created_by":"olduser"}]}
+{"id":"bd-b2","title":"In progress work","status":"in_progress","priority":2,"issue_type":"task","assignee":"alice","created_at":"2025-06-03T10:00:00Z","created_by":"olduser","updated_at":"2025-06-03T10:00:00Z","dependencies":[{"issue_id":"bd-b2","depends_on_id":"bd-a1","type":"related","created_at":"2025-06-03T10:00:00Z","created_by":"olduser"},{"issue_id":"bd-b2","depends_on_id":"bd-a1","type":"discovered-from","created_at":"2025-06-03T10:00:00Z","created_by":"olduser"}]}
+{"id":"bd-c3","title":"Blocked work","status":"blocked","priority":2,"issue_type":"task","created_at":"2025-06-04T10:00:00Z","created_by":"olduser","updated_at":"2025-06-04T10:00:00Z","dependencies":[{"issue_id":"bd-c3","depends_on_id":"bd-b2","type":"blocks","created_at":"2025-06-04T10:00:00Z","created_by":"olduser"}]}
+{"id":"bd-d4","title":"Deferred work","status":"deferred","defer_until":"2026-03-01T00:00:00Z","priority":3,"issue_type":"task","created_at":"2025-06-05T10:00:00Z","created_by":"olduser","updated_at":"2025-06-05T10:00:00Z","dependencies":[{"issue_id":"bd-d4","depends_on_id":"bd-a1","type":"duplicates","created_at":"2025-06-05T10:00:00Z","created_by":"olduser"}]}
+{"id":"bd-e5","title":"Finished work","status":"closed","close_reason":"Fixed in v2","priority":2,"issue_type":"bug","created_at":"2025-06-06T10:00:00Z","created_by":"olduser","updated_at":"2025-06-07T10:00:00Z","closed_at":"2025-06-07T10:00:00Z"}
+{"id":"bd-f6","title":"Deleted long ago","status":"tombstone","priority":2,"issue_type":"task","created_at":"2025-06-08T10:00:00Z","created_by":"olduser","updated_at":"2025-07-01T00:00:00Z","deleted_at":"2025-07-01T00:00:00Z"}
+-- cycle.jsonl --
+{"id":"bd-x1","title":"X","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:00:00Z","updated_at":"2025-06-01T10:00:00Z","dependencies":[{"issue_id":"bd-x1","depends_on_id":"bd-x2","type":"blocks"}]}
+{"id":"bd-x2","title":"Y","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:00:00Z","updated_at":"2025-06-01T10:00:00Z","dependencies":[{"issue_id":"bd-x2","depends_on_id":"bd-x1","type":"blocks"}]}

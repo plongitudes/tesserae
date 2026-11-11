@@ -1,0 +1,76 @@
+# Hierarchy rules come from structure, not type (ADR-0015, ADR-0016, ADR-0017).
+
+exec git init -q .
+exec tess init --prefix t
+
+# Children have flat IDs; a parent can have many children.
+capture P -- tess create 'Parent' --json
+capture C1 -- tess create 'Child one' --parent $P --json
+capture C2 -- tess create 'Child two' --parent $P --json
+capture C3 -- tess create 'Child three' --json
+exec tess link $P parent-of $C3 --json
+idshape $C1
+idshape $C2
+exec tess show $P --json
+json stdout .links.children|length 3
+json stdout .links.children has $C1
+json stdout .links.children has $C3
+exec tess show $C1 --json
+json stdout .parent $P
+json stdout .ancestors '["'$P'"]'
+
+# Type doesn't matter: a task with children follows the same rules.
+exec tess show $P --json
+json stdout .type task
+
+# Only one parent.
+capture Q -- tess create 'Other parent' --json
+! exec tess link $Q parent-of $C1 --json
+json stderr .error.code has_parent
+# child-of is the same link in inverse wording.
+! exec tess link $C1 child-of $Q --json
+json stderr .error.code has_parent
+
+# Reparent: unlink, then link. The ID never changes.
+exec tess unlink $P parent-of $C1 --json
+exec tess link $C1 child-of $Q --json
+json stdout .from $Q
+json stdout .type parent
+json stdout .to $C1
+exec tess show $C1 --json
+json stdout .id $C1
+json stdout .parent $Q
+
+# A parent can't be done or omitted while children are open.
+! exec tess status $P done --json
+json stderr .error.code has_open_children
+! exec tess status $P omit -r 'x' --json
+json stderr .error.code has_open_children
+exec tess status $C2 done --json
+exec tess status $C3 omit -r 'dropped' --json
+exec tess status $P done --json
+json stdout .updated[0].status done
+
+# Ancestors run nearest first.
+capture G -- tess create 'Grandchild' --parent $C1 --json
+exec tess show $G --json
+json stdout .ancestors[0] $C1
+json stdout .ancestors[1] $Q
+
+# Cycles are refused for parent and blocks links.
+! exec tess link $G parent-of $Q --json
+json stderr .error.code cycle
+capture X -- tess create 'X' --json
+capture Y -- tess create 'Y' --json
+capture Z -- tess create 'Z' --json
+exec tess link $X blocks $Y --json
+exec tess link $Y blocks $Z --json
+! exec tess link $Z blocks $X --json
+json stderr .error.code cycle
+! exec tess link $X blocks $X --json
+json stderr .error.code cycle
+
+# related and discovered-from never take part in cycle checks.
+exec tess link $Z related $X --json
+exec tess link $X discovered-from $Z --json
+exec tess link $Z discovered-from $X --json
