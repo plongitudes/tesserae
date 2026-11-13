@@ -5,7 +5,8 @@ Status: agreed 2026-11-05, pending review of the whole draft. Compatible with `b
 ## Commands
 
 ```
-tess init [--prefix P]                 create the database for this repo (prefix defaults to repo dir name)
+tess init [--prefix P]                 create the database for this repo (prefix defaults to repo dir name);
+                                       the file is <git common dir>/tess.db (ADR-0003)
 
 tess create TITLE [flags]              create an issue; prints its ID
     -t, --type TYPE                    task (default) | bug | feature | epic | chore
@@ -53,8 +54,11 @@ tess comment ID TEXT                   or "-" to read stdin
 tess import PATH                       old bd issues.jsonl
 tess sync                              fetch, merge, push the sync ref (ADR-0012)
 tess setup claude [--check|--remove]   write the Claude Code skill + hooks (ADR-0019)
+tess hook session-start|session-end    plumbing called by those hooks; not shown in orientation
 tess                                   no arguments: ~10 lines of orientation
 ```
+
+`tess hook` is what `setup claude` installs in `.claude/settings.json`: `SessionStart` (matcher `startup|resume|compact`) runs `tess hook session-start`, which reads the hook's JSON from stdin, runs `tess sync` with a short timeout unless `source` is `compact`, then prints 3–6 lines of facts (ready count, in-progress count, last sync) and never instructions; it prints nothing when the repo has no database and always exits 0. `SessionEnd` runs `tess hook session-end`, which starts a detached `tess sync` and exits at once. Both commands are wrapped so a missing `tess` binary fails quietly (ADR-0019, scope notes). In loop 1, where `sync` is a stub, `session-start` skips the sync and `session-end` does nothing.
 
 Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), `cycles` (`link` refuses to create one; `import` reports any it finds).
 

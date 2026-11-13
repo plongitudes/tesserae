@@ -8,6 +8,10 @@ How v1 gets built. Agreed 2026-11-09.
 2. **Checkpoint.** Dogfood the core on one machine. Fix the design where use shows it's wrong, while that's still cheap: the sync ref format (ADR-0011) persists on remotes and other machines, so it's the hardest thing to change later.
 3. **Loop 2: sync.** Written against the core as built, with its own spec and acceptance suite (below).
 
+### Running loop 1
+
+Everything the loop runs on is in `scripts/ralph/`: `ralph.sh` (the host loop: worktree, offline module cache, sandbox, per-iteration verification), `prompt.md` (what each fresh iteration is told), `plan.md` (the ordered items the loop checks off, plus its notes to the human), and `check.sh` (the gate: gofmt, vet, unit tests, build, acceptance report). `ralph.sh --probe` smoke-tests the sandbox first. Dependencies are fixed in advance ([ADR-0020](../adr/0020-v1-dependencies.md)). The loop may not touch `acceptance/`, `docs/`, `go.mod`, or its own scripts; the host stops it if it does.
+
 One big loop was rejected: sync bugs are subtle and only appear across machines over time, so a loop would pass weak tests with wrong code; sync would freeze core shapes before they're proven; and drift and review burden grow with spec size.
 
 ## Sync testing (loop 2's acceptance suite)
