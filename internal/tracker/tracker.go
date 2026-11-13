@@ -176,7 +176,7 @@ func (t *tracker) Create(ctx context.Context, n NewIssue) (Issue, error) {
 	if err := errors.Join(checkType(n.Type), checkPriority(priority), checkLabels(n.Labels)); err != nil {
 		return Issue{}, firstError(err)
 	}
-	prefix, ok, err := t.store.Config(ctx, "prefix")
+	prefix, ok, err := t.store.Config(ctx, configPrefix)
 	if err != nil {
 		return Issue{}, err
 	}

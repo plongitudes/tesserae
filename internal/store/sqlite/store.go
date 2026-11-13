@@ -162,6 +162,15 @@ func (s *Store) Config(ctx context.Context, key string) (value string, ok bool, 
 	return value, err == nil, err
 }
 
+// ConfigIn is Config inside the caller's transaction.
+func ConfigIn(ctx context.Context, tx *sql.Tx, key string) (value string, ok bool, err error) {
+	err = tx.QueryRowContext(ctx, `SELECT value FROM config WHERE key = ?`, key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return value, err == nil, err
+}
+
 // SetConfig sets key to value in the config table, inside the caller's write
 // transaction.
 func SetConfig(ctx context.Context, tx *sql.Tx, key, value string) error {
