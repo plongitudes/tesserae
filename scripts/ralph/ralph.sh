@@ -87,7 +87,7 @@ jq -n --arg scratch "$scratch" --arg cache "$cache" --arg usertmp "$usertmp" '{
 claude_run() { # <prompt> -> stream-json on stdout
   local model=()
   [ -n "${RALPH_MODEL:-}" ] && model=(--model "$RALPH_MODEL")
-  (cd "$wt" && claude -p "$1" \
+  (cd "$wt" && claude -p "$1" </dev/null \
     --settings "$settings" \
     --permission-mode dontAsk \
     --allowedTools "Read,Edit,Write,Bash,Glob,Grep,Skill,TodoWrite" \
