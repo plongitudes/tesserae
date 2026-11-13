@@ -88,7 +88,7 @@ func previousStatus(ctx context.Context, tx *sql.Tx, issueID string) (*string, e
 // events are written only here in the store, by the functions that make the
 // change.
 func insertEvent(ctx context.Context, tx *sql.Tx, issueID string, at time.Time, by, attr string, old, new any) error {
-	id, err := nextEventID(ctx, tx, at)
+	id, err := nextULID(ctx, tx, "events", at)
 	if err != nil {
 		return err
 	}
@@ -109,18 +109,19 @@ func insertEvent(ctx context.Context, tx *sql.Tx, issueID string, at time.Time, 
 	return nil
 }
 
-// nextEventID returns a ULID for an event at the given time that sorts after
-// every event already in the store, so that ID order is the order in which
-// changes were made even when the clock stands still or steps back. A fresh
-// ULID is used when it already sorts last; otherwise the latest ID plus one.
-func nextEventID(ctx context.Context, tx *sql.Tx, at time.Time) (string, error) {
+// nextULID returns a ULID for a row of table (events or comments) made at the
+// given time that sorts after every row already there, so that ID order is
+// the order in which the rows were written even when the clock stands still
+// or steps back. A fresh ULID is used when it already sorts last; otherwise
+// the latest ID plus one.
+func nextULID(ctx context.Context, tx *sql.Tx, table string, at time.Time) (string, error) {
 	id, err := ulid.New(ulid.Timestamp(at), rand.Reader)
 	if err != nil {
-		return "", fmt.Errorf("new event ID: %w", err)
+		return "", fmt.Errorf("new ID for %s: %w", table, err)
 	}
 	var latest sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT max(id) FROM events`).Scan(&latest); err != nil {
-		return "", fmt.Errorf("read the latest event ID: %w", err)
+	if err := tx.QueryRowContext(ctx, `SELECT max(id) FROM `+table).Scan(&latest); err != nil {
+		return "", fmt.Errorf("read the latest ID in %s: %w", table, err)
 	}
 	if latest.Valid {
 		// An ID that isn't a ULID can't be stepped past; the fresh one stands.

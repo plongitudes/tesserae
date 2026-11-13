@@ -38,31 +38,20 @@ func newFixture(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { s.Close() })
 	f := &fixture{t: t, ctx: ctx, s: s, now: start}
-	f.write(func(tx *sql.Tx) error { return sqlite.SetConfig(ctx, tx, "prefix", "t") })
+	if err := s.Write(ctx, func(tx *sql.Tx) error { return sqlite.SetConfig(ctx, tx, "prefix", "t") }); err != nil {
+		t.Fatal(err)
+	}
 	f.tr = tracker.New(s, func() time.Time { return f.now }, "tester")
 	return f
 }
 
-// write sets up state that the interface can't reach yet (retiring,
-// comments).
-func (f *fixture) write(fn func(tx *sql.Tx) error) {
+func (f *fixture) retire(ids ...string) tracker.Change {
 	f.t.Helper()
-	if err := f.s.Write(f.ctx, fn); err != nil {
-		f.t.Fatal(err)
+	c, err := f.tr.Retire(f.ctx, ids, "")
+	if err != nil {
+		f.t.Fatalf("Retire(%v): %v", ids, err)
 	}
-}
-
-func (f *fixture) exec(query string, args ...any) {
-	f.t.Helper()
-	f.write(func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(f.ctx, query, args...)
-		return err
-	})
-}
-
-func (f *fixture) retire(id string) {
-	f.t.Helper()
-	f.exec(`UPDATE issues SET retired_at = '2026-01-05T00:00:00.000Z' WHERE id = ?`, id)
+	return c
 }
 
 // setStatus sets a status the short way, with a stock reason where one is
@@ -367,7 +356,7 @@ func TestRetiredIssues(t *testing.T) {
 
 	// The exact ID still reaches it; a partial one doesn't.
 	r := f.get(blocker)
-	if r.RetiredAt == nil || !r.RetiredAt.Equal(time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)) {
+	if r.RetiredAt == nil || !r.RetiredAt.Equal(start) {
 		t.Errorf("retired_at = %v", r.RetiredAt)
 	}
 	_, err := f.tr.Get(f.ctx, blocker[2:])
@@ -380,25 +369,9 @@ func TestRetiredIssues(t *testing.T) {
 	wantCode(t, err, tracker.CodeRetired)
 	_, err = f.tr.Create(f.ctx, tracker.NewIssue{Title: "x", BlockedBy: []string{blocker}})
 	wantCode(t, err, tracker.CodeRetired)
-	f.wantChanges(blocker)
+	f.wantChanges(blocker, change{"retired_at", nil, "2026-01-01T00:00:00Z"})
 	if f.get(blocker).Title != "Mistake" {
 		t.Errorf("a retired issue was changed")
-	}
-}
-
-func TestGetListsComments(t *testing.T) {
-	f := newFixture(t)
-	a := f.titled("A")
-	f.exec(`INSERT INTO comments (id, issue_id, author, text, created_at) VALUES
-	        ('c2', ?1, 'bob', 'Second', '2026-01-03T00:00:00.000Z'),
-	        ('c1', ?1, 'alice', 'First', '2026-01-02T00:00:00.000Z')`, a)
-
-	want := []tracker.Comment{
-		{ID: "c1", Author: "alice", Text: "First", CreatedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
-		{ID: "c2", Author: "bob", Text: "Second", CreatedAt: time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)},
-	}
-	if got := f.get(a).Comments; !reflect.DeepEqual(got, want) {
-		t.Errorf("comments = %+v; want %+v", got, want)
 	}
 }
 

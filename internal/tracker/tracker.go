@@ -137,6 +137,17 @@ type Tracker interface {
 	// Tree returns the dependency tree below an issue: its children and the
 	// issues it is blocked by, and theirs in turn.
 	Tree(ctx context.Context, partialID string) (TreeNode, error)
+	// Retire hides each issue named, all of them or none, and reports the
+	// issues that are no longer blocked because of it. A reason, if given,
+	// is kept as a comment on each.
+	Retire(ctx context.Context, partialIDs []string, reason string) (Change, error)
+	// Restore brings a retired issue back. It takes the exact ID only.
+	Restore(ctx context.Context, id string) (Issue, error)
+	// Comment adds an immutable comment by the actor.
+	Comment(ctx context.Context, partialID, text string) (Comment, error)
+	// List returns the issues a filter selects, in list order: priority,
+	// then created_at, then id.
+	List(ctx context.Context, f Filter) ([]Issue, error)
 }
 
 type tracker struct {
@@ -434,13 +445,17 @@ func resolveLive(ctx context.Context, tx *sql.Tx, partialID string) (string, err
 		return "", err
 	}
 	if retired {
-		return "", &Error{
-			Code:    CodeRetired,
-			Message: fmt.Sprintf("%s is retired", id),
-			Hint:    fmt.Sprintf("tess restore %s brings it back", id),
-		}
+		return "", retiredError(id)
 	}
 	return id, nil
+}
+
+func retiredError(id string) *Error {
+	return &Error{
+		Code:    CodeRetired,
+		Message: fmt.Sprintf("%s is retired", id),
+		Hint:    fmt.Sprintf("tess restore %s brings it back", id),
+	}
 }
 
 func read(ctx context.Context, tx *sql.Tx, id string) (Issue, error) {

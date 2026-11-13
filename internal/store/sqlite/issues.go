@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -143,9 +143,24 @@ func InsertIssue(ctx context.Context, tx *sql.Tx, n NewIssue) error {
 // when there is none. A retired issue is outside the readiness graph, so it
 // reads with its stored status, not blocked, and no parent.
 func GetIssue(ctx context.Context, tx *sql.Tx, id string) (issue Issue, ok bool, err error) {
-	var reason, assignee, owner, due, retired sql.NullString
-	var created, updated string
-	err = tx.QueryRowContext(ctx,
+	issues, err := queryIssues(ctx, tx, `WHERE i.id = ?`, id)
+	if err != nil {
+		return Issue{}, false, fmt.Errorf("read issue %s: %w", id, err)
+	}
+	if len(issues) == 0 {
+		return Issue{}, false, nil
+	}
+	return issues[0], true, nil
+}
+
+// queryIssues is the one read of issues as they display: the rows the tail
+// (WHERE, ORDER BY, LIMIT) selects, each with its displayed status and
+// blocked condition from issue_states, its labels, and its ancestors. The
+// tail can refer to the issue as i, its state as s (NULL for a retired
+// issue), and its description and notes bodies as d and n. The result is
+// never nil.
+func queryIssues(ctx context.Context, tx *sql.Tx, tail string, args ...any) ([]Issue, error) {
+	rows, err := tx.QueryContext(ctx,
 		`SELECT i.id, i.title, d.body, g.body, a.body, n.body, i.type, i.priority,
 		        coalesce(s.display_status, i.status), i.status_reason, coalesce(s.blocked, 0),
 		        i.assignee, i.owner, i.due_at, i.created_at, i.created_by, i.updated_at, i.retired_at
@@ -155,42 +170,93 @@ func GetIssue(ctx context.Context, tx *sql.Tx, id string) (issue Issue, ok bool,
 		 JOIN texts a ON a.hash = i.acceptance_criteria
 		 JOIN texts n ON n.hash = i.notes
 		 LEFT JOIN issue_states s ON s.id = i.id
-		 WHERE i.id = ?`, id).Scan(
-		&issue.ID, &issue.Title, &issue.Description, &issue.Design, &issue.AcceptanceCriteria, &issue.Notes,
-		&issue.Type, &issue.Priority, &issue.Status, &reason, &issue.Blocked,
-		&assignee, &owner, &due, &created, &issue.CreatedBy, &updated, &retired)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Issue{}, false, nil
-	}
+		 `+tail, args...)
 	if err != nil {
-		return Issue{}, false, fmt.Errorf("read issue %s: %w", id, err)
+		return nil, err
 	}
-	issue.StatusReason, issue.Assignee, issue.Owner = stringPtr(reason), stringPtr(assignee), stringPtr(owner)
-	if issue.CreatedAt, err = ParseTime(created); err != nil {
-		return Issue{}, false, err
-	}
-	if issue.UpdatedAt, err = ParseTime(updated); err != nil {
-		return Issue{}, false, err
-	}
-	if issue.DueAt, err = timePtr(due); err != nil {
-		return Issue{}, false, err
-	}
-	if issue.RetiredAt, err = timePtr(retired); err != nil {
-		return Issue{}, false, err
+	issues, err := scanIssues(rows)
+	if err != nil || len(issues) == 0 {
+		return issues, err
 	}
 
-	if issue.Labels, err = queryStrings(ctx, tx,
-		`SELECT label FROM labels WHERE issue_id = ? ORDER BY label`, id); err != nil {
-		return Issue{}, false, err
+	// Labels and ancestors for the whole result in two queries, not two per
+	// issue.
+	index := make(map[string]*Issue, len(issues))
+	ids := make([]string, len(issues))
+	for i := range issues {
+		index[issues[i].ID] = &issues[i]
+		ids[i] = issues[i].ID
 	}
-	if issue.Ancestors, err = queryStrings(ctx, tx,
-		`SELECT ancestor_id FROM issue_ancestors WHERE id = ? ORDER BY depth`, id); err != nil {
-		return Issue{}, false, err
+	idList, err := json.Marshal(ids)
+	if err != nil {
+		return nil, err
 	}
-	if len(issue.Ancestors) > 0 {
-		issue.Parent = &issue.Ancestors[0]
+	collect := func(query string, into func(*Issue) *[]string) error {
+		rows, err := tx.QueryContext(ctx, query, string(idList))
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, value string
+			if err := rows.Scan(&id, &value); err != nil {
+				return err
+			}
+			list := into(index[id])
+			*list = append(*list, value)
+		}
+		return rows.Err()
 	}
-	return issue, true, nil
+	if err := collect(
+		`SELECT issue_id, label FROM labels
+		 WHERE issue_id IN (SELECT value FROM json_each(?)) ORDER BY issue_id, label`,
+		func(i *Issue) *[]string { return &i.Labels }); err != nil {
+		return nil, fmt.Errorf("read labels: %w", err)
+	}
+	if err := collect(
+		`SELECT id, ancestor_id FROM issue_ancestors
+		 WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id, depth`,
+		func(i *Issue) *[]string { return &i.Ancestors }); err != nil {
+		return nil, fmt.Errorf("read ancestors: %w", err)
+	}
+	for i := range issues {
+		if len(issues[i].Ancestors) > 0 {
+			issues[i].Parent = &issues[i].Ancestors[0]
+		}
+	}
+	return issues, nil
+}
+
+func scanIssues(rows *sql.Rows) ([]Issue, error) {
+	defer rows.Close()
+	issues := []Issue{}
+	for rows.Next() {
+		issue := Issue{Labels: []string{}, Ancestors: []string{}}
+		var reason, assignee, owner, due, retired sql.NullString
+		var created, updated string
+		err := rows.Scan(
+			&issue.ID, &issue.Title, &issue.Description, &issue.Design, &issue.AcceptanceCriteria, &issue.Notes,
+			&issue.Type, &issue.Priority, &issue.Status, &reason, &issue.Blocked,
+			&assignee, &owner, &due, &created, &issue.CreatedBy, &updated, &retired)
+		if err != nil {
+			return nil, err
+		}
+		issue.StatusReason, issue.Assignee, issue.Owner = stringPtr(reason), stringPtr(assignee), stringPtr(owner)
+		if issue.CreatedAt, err = ParseTime(created); err != nil {
+			return nil, err
+		}
+		if issue.UpdatedAt, err = ParseTime(updated); err != nil {
+			return nil, err
+		}
+		if issue.DueAt, err = timePtr(due); err != nil {
+			return nil, err
+		}
+		if issue.RetiredAt, err = timePtr(retired); err != nil {
+			return nil, err
+		}
+		issues = append(issues, issue)
+	}
+	return issues, rows.Err()
 }
 
 // LoadDetail fills in what `show` adds to an issue: its links, its comments,
@@ -268,11 +334,33 @@ func comments(ctx context.Context, tx *sql.Tx, issueID string) ([]Comment, error
 	return out, rows.Err()
 }
 
+// InsertComment adds a comment to an issue and returns it as it reads back.
+// A comment is its own record: it logs no event and leaves the issue's
+// updated_at alone (ADR-0013). Its ID is a ULID that sorts after every
+// comment already stored, so comments made in the same instant keep the
+// order they were made in.
+func InsertComment(ctx context.Context, tx *sql.Tx, issueID, author, text string, at time.Time) (Comment, error) {
+	id, err := nextULID(ctx, tx, "comments", at)
+	if err != nil {
+		return Comment{}, err
+	}
+	stamp := FormatTime(at)
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO comments (id, issue_id, author, text, created_at) VALUES (?, ?, ?, ?, ?)`,
+		id, issueID, author, text, stamp); err != nil {
+		return Comment{}, fmt.Errorf("comment on %s: %w", issueID, err)
+	}
+	c := Comment{ID: id, Author: author, Text: text}
+	c.CreatedAt, err = ParseTime(stamp)
+	return c, err
+}
+
 // Patch is a typed change to an issue: nil fields are left alone. For the
 // optional fields (StatusReason, Assignee, Owner) an empty string clears the
-// value, and a zero DueAt clears the due date. Status is here so that every
-// field change goes through the one diff; the rules about which status
-// changes are allowed belong to the tracker.
+// value, and a zero DueAt or RetiredAt clears that timestamp. Status and
+// RetiredAt are here so that every field change goes through the one diff;
+// the rules about which status changes are allowed, and about retiring and
+// restoring, belong to the tracker.
 type Patch struct {
 	Title              *string
 	Type               *string
@@ -286,6 +374,7 @@ type Patch struct {
 	Assignee           *string
 	Owner              *string
 	DueAt              *time.Time
+	RetiredAt          *time.Time
 	AddLabels          []string
 	RemoveLabels       []string
 }
@@ -296,17 +385,18 @@ type Patch struct {
 // updated_at moves to at when anything changed, and never has an event.
 func UpdateIssue(ctx context.Context, tx *sql.Tx, id string, p Patch, at time.Time, by string) error {
 	var cur struct {
-		title, typ, status                      string
-		priority                                int
-		description, design, acceptance, notes  string
-		statusReason, assignee, owner, dueAtRaw sql.NullString
+		title, typ, status                     string
+		priority                               int
+		description, design, acceptance, notes string
+		statusReason, assignee, owner          sql.NullString
+		dueAtRaw, retiredAtRaw                 sql.NullString
 	}
 	err := tx.QueryRowContext(ctx,
 		`SELECT title, type, priority, description, design, acceptance_criteria, notes,
-		        status, status_reason, assignee, owner, due_at
+		        status, status_reason, assignee, owner, due_at, retired_at
 		 FROM issues WHERE id = ?`, id).Scan(
 		&cur.title, &cur.typ, &cur.priority, &cur.description, &cur.design, &cur.acceptance, &cur.notes,
-		&cur.status, &cur.statusReason, &cur.assignee, &cur.owner, &cur.dueAtRaw)
+		&cur.status, &cur.statusReason, &cur.assignee, &cur.owner, &cur.dueAtRaw, &cur.retiredAtRaw)
 	if err != nil {
 		return fmt.Errorf("read issue %s: %w", id, err)
 	}
@@ -344,6 +434,28 @@ func UpdateIssue(ctx context.Context, tx *sql.Tx, id string, p Patch, at time.Ti
 		return set(attr, hash, oldHash, hash)
 	}
 
+	timestamp := func(attr string, oldRaw sql.NullString, new *time.Time) error {
+		if new == nil {
+			return nil
+		}
+		old, err := timePtr(oldRaw)
+		if err != nil {
+			return err
+		}
+		switch {
+		case new.IsZero() && old == nil:
+			return nil
+		case new.IsZero():
+			return set(attr, nil, eventTime(*old), nil)
+		case old != nil && old.Equal(*new):
+			return nil
+		case old == nil:
+			return set(attr, FormatTime(*new), nil, eventTime(*new))
+		default:
+			return set(attr, FormatTime(*new), eventTime(*old), eventTime(*new))
+		}
+	}
+
 	steps := []func() error{
 		func() error { return required("title", cur.title, p.Title) },
 		func() error { return required("type", cur.typ, p.Type) },
@@ -361,27 +473,8 @@ func UpdateIssue(ctx context.Context, tx *sql.Tx, id string, p Patch, at time.Ti
 		func() error { return optional("status_reason", cur.statusReason, p.StatusReason) },
 		func() error { return optional("assignee", cur.assignee, p.Assignee) },
 		func() error { return optional("owner", cur.owner, p.Owner) },
-		func() error {
-			if p.DueAt == nil {
-				return nil
-			}
-			old, err := timePtr(cur.dueAtRaw)
-			if err != nil {
-				return err
-			}
-			switch {
-			case p.DueAt.IsZero() && old == nil:
-				return nil
-			case p.DueAt.IsZero():
-				return set("due_at", nil, eventTime(*old), nil)
-			case old != nil && old.Equal(*p.DueAt):
-				return nil
-			case old == nil:
-				return set("due_at", FormatTime(*p.DueAt), nil, eventTime(*p.DueAt))
-			default:
-				return set("due_at", FormatTime(*p.DueAt), eventTime(*old), eventTime(*p.DueAt))
-			}
-		},
+		func() error { return timestamp("due_at", cur.dueAtRaw, p.DueAt) },
+		func() error { return timestamp("retired_at", cur.retiredAtRaw, p.RetiredAt) },
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {

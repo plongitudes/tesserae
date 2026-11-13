@@ -384,7 +384,7 @@ func TestAChildOfARetiredParentStillHasAParentUntilUnlinked(t *testing.T) {
 	wantLink(t, f.unlink(p, "parent-of", c), p, "parent", c)
 	f.link(q, "parent-of", c)
 	f.wantChanges(c, change{"parent", nil, p}, change{"parent", p, nil}, change{"parent", nil, q})
-	f.wantChanges(p)
+	f.wantChanges(p, change{"retired_at", nil, "2026-01-01T00:00:00Z"})
 }
 
 func TestUnlinkRefusesToChangeARetiredIssue(t *testing.T) {
@@ -400,6 +400,6 @@ func TestUnlinkRefusesToChangeARetiredIssue(t *testing.T) {
 	wantCode(t, err, tracker.CodeRetired)
 	_, err = f.tr.Unlink(f.ctx, b, "blocked-by", a)
 	wantCode(t, err, tracker.CodeRetired)
-	f.wantChanges(c, change{"parent", nil, p})
-	f.wantChanges(b, change{"blocked_by", nil, a})
+	f.wantChanges(c, change{"parent", nil, p}, change{"retired_at", nil, "2026-01-01T00:00:00Z"})
+	f.wantChanges(b, change{"blocked_by", nil, a}, change{"retired_at", nil, "2026-01-01T00:00:00Z"})
 }
