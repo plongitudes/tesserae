@@ -1,0 +1,336 @@
+package cli
+
+import (
+	"bytes"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+// tessIn runs tess with text on stdin.
+func tessIn(t *testing.T, stdin string, args ...string) result {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	code := run(args, strings.NewReader(stdin), &stdout, &stderr)
+	return result{code, stdout.String(), stderr.String()}
+}
+
+// ok runs tess with --json, fails the test unless it exits 0, and returns
+// stdout decoded.
+func ok[T any](t *testing.T, args ...string) T {
+	t.Helper()
+	r := tess(t, append(args, "--json")...)
+	if r.code != 0 {
+		t.Fatalf("tess %s: exit %d: %s", strings.Join(args, " "), r.code, r.stderr)
+	}
+	return decode[T](t, r.stdout)
+}
+
+type object = map[string]any
+
+func newID(t *testing.T, args ...string) string {
+	t.Helper()
+	return created(t, args...)["id"].(string)
+}
+
+func TestCreateTakesEveryFlagOfTheCommandSurface(t *testing.T) {
+	inInitialisedRepo(t)
+	parent := newID(t, "Parent")
+	blocker := newID(t, "Blocker")
+	id := newID(t, "Full", "-t", "bug", "-p", "0", "-d", "Steps", "--design", "A view",
+		"--acceptance", "Stays fast", "--notes", "Seen twice", "-l", "ui", "-l", "auth",
+		"-a", "alice", "--parent", parent, "-b", blocker)
+	got := ok[object](t, "show", id)
+	want := object{
+		"type": "bug", "priority": 0.0, "description": "Steps", "design": "A view",
+		"acceptance_criteria": "Stays fast", "notes": "Seen twice",
+		"labels": []any{"auth", "ui"}, "assignee": "alice", "parent": parent,
+	}
+	for k, v := range want {
+		if !reflect.DeepEqual(got[k], v) {
+			t.Errorf("%s is %v, want %v", k, got[k], v)
+		}
+	}
+	if by := got["links"].(object)["blocked_by"]; !reflect.DeepEqual(by, []any{blocker}) {
+		t.Errorf("blocked_by is %v, want [%s]", by, blocker)
+	}
+}
+
+func TestATextFlagGivenADashReadsStdinVerbatim(t *testing.T) {
+	inInitialisedRepo(t)
+	r := tessIn(t, "line one\nline two\n", "create", "From stdin", "-d", "-", "--json")
+	if r.code != 0 {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	if got := decode[object](t, r.stdout)["description"]; got != "line one\nline two\n" {
+		t.Errorf("description is %q", got)
+	}
+	// Stdin can be read once, so only one flag can take it.
+	r = tessIn(t, "text", "create", "Twice", "-d", "-", "--notes", "-", "--json")
+	wantError(t, r, "invalid_argument")
+}
+
+func TestCreateRefusesBadValuesAsInvalidArgument(t *testing.T) {
+	inInitialisedRepo(t)
+	for _, args := range [][]string{
+		{"create", "Bad priority", "-p", "7"},
+		{"create", "Bad priority", "-p", "high"},
+		{"create", "Bad type", "-t", "saga"},
+		{"create"},
+	} {
+		wantError(t, tess(t, append(args, "--json")...), "invalid_argument")
+	}
+}
+
+func TestShowWithHistoryAddsTheEvents(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Tracked")
+	if _, has := ok[object](t, "show", id)["history"]; has {
+		t.Errorf("show without --history has a history")
+	}
+	history := ok[object](t, "show", id, "--history")["history"]
+	if !reflect.DeepEqual(history, []any{}) {
+		t.Errorf("history of a new issue is %v, want []", history)
+	}
+}
+
+func TestShowWithSeveralIDsIsAnArrayInTheOrderAsked(t *testing.T) {
+	inInitialisedRepo(t)
+	a, b := newID(t, "First"), newID(t, "Second")
+	got := ok[[]object](t, "show", b, a)
+	if len(got) != 2 || got[0]["id"] != b || got[1]["id"] != a {
+		t.Errorf("show gave %v", got)
+	}
+	wantError(t, tess(t, "show", a, "t-zzzzzzzz", "--json"), "not_found")
+}
+
+func TestPlainShowPrintsTheIssueInFull(t *testing.T) {
+	inInitialisedRepo(t)
+	blocker := newID(t, "Blocker")
+	id := newID(t, "Detailed", "-t", "bug", "-p", "1", "-d", "Steps to reproduce", "-l", "ui", "-a", "alice", "-b", blocker)
+	r := tess(t, "show", id)
+	if r.code != 0 {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	if !strings.HasPrefix(r.stdout, "⊖ "+id+" Detailed\n") {
+		t.Errorf("first line is not the list line:\n%s", r.stdout)
+	}
+	for _, want := range []string{"bug", "waiting", "alice", "ui", "Steps to reproduce", blocker, "tester"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("plain show doesn't mention %q:\n%s", want, r.stdout)
+		}
+	}
+}
+
+func TestUpdateChangesEveryNonStatusField(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Original", "-l", "keep")
+	got := ok[object](t, "update", id, "--title", "New title", "-t", "feature", "-p", "1",
+		"-d", "What", "--design", "How", "--acceptance", "When done", "--notes", "Aside",
+		"-a", "bob", "--owner", "carol", "--due", "2026-02-01",
+		"--add-label", "b", "--add-label", "a", "--remove-label", "keep")
+	want := object{
+		"title": "New title", "type": "feature", "priority": 1.0, "description": "What",
+		"design": "How", "acceptance_criteria": "When done", "notes": "Aside",
+		"assignee": "bob", "owner": "carol", "due_at": "2026-02-01T00:00:00Z",
+		"labels": []any{"a", "b"},
+	}
+	for k, v := range want {
+		if !reflect.DeepEqual(got[k], v) {
+			t.Errorf("%s is %v, want %v", k, got[k], v)
+		}
+	}
+}
+
+func TestUpdateLeavesFieldsThatWereNotNamedAlone(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Kept", "-p", "0", "-d", "Body", "-a", "alice")
+	got := ok[object](t, "update", id, "--owner", "carol")
+	if got["priority"] != 0.0 || got["description"] != "Body" || got["assignee"] != "alice" || got["title"] != "Kept" {
+		t.Errorf("update --owner changed other fields: %v", got)
+	}
+}
+
+func TestDueTakesADateOrAnRFC3339TimeAndPrintsUTC(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Due")
+	for given, want := range map[string]string{
+		"2026-02-01":                "2026-02-01T00:00:00Z",
+		"2026-02-01T12:30:00Z":      "2026-02-01T12:30:00Z",
+		"2026-02-01T12:30:00+02:00": "2026-02-01T10:30:00Z",
+	} {
+		if got := ok[object](t, "update", id, "--due", given)["due_at"]; got != want {
+			t.Errorf("--due %s: due_at is %v, want %s", given, got, want)
+		}
+	}
+	for _, bad := range []string{"tomorrow", "2026-02-30", "02/01/2026"} {
+		wantError(t, tess(t, "update", id, "--due", bad, "--json"), "invalid_argument")
+	}
+}
+
+func TestAnEmptyValueClearsAnOptionalField(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Filled", "-a", "alice", "-d", "Body")
+	ok[object](t, "update", id, "--owner", "carol", "--due", "2026-02-01")
+	got := ok[object](t, "update", id, "-a", "", "--owner", "", "--due", "", "-d", "")
+	if got["assignee"] != nil || got["owner"] != nil || got["due_at"] != nil || got["description"] != "" {
+		t.Errorf("not cleared: %v", got)
+	}
+}
+
+func TestUpdateReadsATextFromStdin(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Noted")
+	r := tessIn(t, "Line\n", "update", id, "--notes", "-", "--json")
+	if r.code != 0 {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	if got := decode[object](t, r.stdout)["notes"]; got != "Line\n" {
+		t.Errorf("notes is %q", got)
+	}
+}
+
+func TestUpdateRefusals(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Issue")
+	wantError(t, tess(t, "update", id, "-p", "9", "--json"), "invalid_argument")
+	wantError(t, tess(t, "update", id, "-t", "saga", "--json"), "invalid_argument")
+	wantError(t, tess(t, "update", id, "--status", "done", "--json"), "invalid_argument")
+	wantError(t, tess(t, "update", id, "--json"), "invalid_argument")
+	wantError(t, tess(t, "update", "t-zzzzzzzz", "--title", "x", "--json"), "not_found")
+}
+
+func TestPlainUpdatePrintsTheIssueLine(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Old")
+	if r := tess(t, "update", id, "--title", "New"); r.code != 0 || r.stdout != "○ "+id+" New\n" {
+		t.Errorf("exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
+	}
+}
+
+func ids(issues any) []string {
+	out := []string{}
+	for _, issue := range issues.([]any) {
+		out = append(out, issue.(object)["id"].(string))
+	}
+	return out
+}
+
+func TestStatusPrintsTheIssuesUpdatedAndNewlyUnblocked(t *testing.T) {
+	inInitialisedRepo(t)
+	blocker := newID(t, "Blocker")
+	other := newID(t, "Other")
+	dependent := newID(t, "Dependent", "-b", blocker)
+
+	got := ok[object](t, "status", other, "in-progress")
+	if !reflect.DeepEqual(ids(got["updated"]), []string{other}) || !reflect.DeepEqual(got["newly_unblocked"], []any{}) {
+		t.Errorf("status gave %v", got)
+	}
+	if status := got["updated"].([]any)[0].(object)["status"]; status != "in-progress" {
+		t.Errorf("status is %v", status)
+	}
+
+	got = ok[object](t, "status", blocker, other, "done")
+	if !reflect.DeepEqual(ids(got["updated"]), []string{blocker, other}) {
+		t.Errorf("updated is %v", ids(got["updated"]))
+	}
+	if !reflect.DeepEqual(ids(got["newly_unblocked"]), []string{dependent}) {
+		t.Errorf("newly_unblocked is %v, want [%s]", ids(got["newly_unblocked"]), dependent)
+	}
+}
+
+func TestStatusTakesAReasonAndForce(t *testing.T) {
+	inInitialisedRepo(t)
+	blocker := newID(t, "Blocker")
+	dependent := newID(t, "Dependent", "-b", blocker)
+
+	wantError(t, tess(t, "status", blocker, "held", "--json"), "reason_required")
+	got := ok[object](t, "status", blocker, "held", "-r", "waiting on vendor")
+	if reason := got["updated"].([]any)[0].(object)["status_reason"]; reason != "waiting on vendor" {
+		t.Errorf("status_reason is %v", reason)
+	}
+
+	wantError(t, tess(t, "status", dependent, "done", "--json"), "blocked")
+	ok[object](t, "status", dependent, "done", "--force")
+
+	wantError(t, tess(t, "status", blocker, "waiting", "--json"), "invalid_status")
+	wantError(t, tess(t, "status", blocker, "--json"), "invalid_argument")
+	wantError(t, tess(t, "status", "--json"), "invalid_argument")
+}
+
+func TestPlainStatusListsTheIssuesAndWhatTheyUnblocked(t *testing.T) {
+	inInitialisedRepo(t)
+	blocker := newID(t, "Blocker")
+	dependent := newID(t, "Dependent", "-b", blocker)
+	r := tess(t, "status", blocker, "done")
+	want := "✓ " + blocker + " Blocker\nnewly unblocked:\n  ○ " + dependent + " Dependent\n"
+	if r.code != 0 || r.stdout != want {
+		t.Errorf("exit %d, stderr %q, stdout:\n%s\nwant:\n%s", r.code, r.stderr, r.stdout, want)
+	}
+	// Nothing unblocked, nothing said about it.
+	if r := tess(t, "status", dependent, "in-progress"); r.stdout != "◐ "+dependent+" Dependent\n" {
+		t.Errorf("stdout %q", r.stdout)
+	}
+}
+
+func TestRetireHidesIssuesAndRestoreBringsOneBack(t *testing.T) {
+	inInitialisedRepo(t)
+	mistake := newID(t, "Mistake")
+	dependent := newID(t, "Dependent", "-b", mistake)
+
+	got := ok[object](t, "retire", mistake, "-r", "created by accident")
+	if at := got["updated"].([]any)[0].(object)["retired_at"]; at != "2026-01-01T00:00:00Z" {
+		t.Errorf("retired_at is %v", at)
+	}
+	if !reflect.DeepEqual(ids(got["newly_unblocked"]), []string{dependent}) {
+		t.Errorf("newly_unblocked is %v", ids(got["newly_unblocked"]))
+	}
+	wantError(t, tess(t, "update", mistake, "--title", "x", "--json"), "retired")
+	wantError(t, tess(t, "retire", "--json"), "invalid_argument")
+
+	// restore takes the exact ID only.
+	wantError(t, tess(t, "restore", mistake[2:], "--json"), "not_found")
+	restored := ok[object](t, "restore", mistake)
+	if restored["id"] != mistake || restored["retired_at"] != nil {
+		t.Errorf("restore gave %v", restored)
+	}
+	if status := ok[object](t, "show", dependent)["status"]; status != "waiting" {
+		t.Errorf("the dependent is %v after the restore, want waiting", status)
+	}
+}
+
+func TestPlainRetireAndRestoreSayWhatHappened(t *testing.T) {
+	inInitialisedRepo(t)
+	mistake := newID(t, "Mistake")
+	dependent := newID(t, "Dependent", "-b", mistake)
+	r := tess(t, "retire", mistake)
+	want := "retired " + mistake + " Mistake\nnewly unblocked:\n  ○ " + dependent + " Dependent\n"
+	if r.code != 0 || r.stdout != want {
+		t.Errorf("retire: exit %d, stderr %q, stdout:\n%s", r.code, r.stderr, r.stdout)
+	}
+	if r := tess(t, "restore", mistake); r.code != 0 || r.stdout != "restored "+mistake+" Mistake\n" {
+		t.Errorf("restore: exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestCommentAddsACommentByTheActor(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Discussed")
+	got := ok[object](t, "comment", id, "Looks good")
+	if got["author"] != "tester" || got["text"] != "Looks good" || got["created_at"] != "2026-01-01T00:00:00Z" || got["id"] == "" {
+		t.Errorf("comment gave %v", got)
+	}
+	r := tessIn(t, "From a file\nwith two lines\n", "comment", id, "-", "--json")
+	if r.code != 0 || decode[object](t, r.stdout)["text"] != "From a file\nwith two lines\n" {
+		t.Errorf("comment -: exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
+	}
+	comments := ok[object](t, "show", id)["comments"].([]any)
+	if len(comments) != 2 || comments[0].(object)["text"] != "Looks good" {
+		t.Errorf("show has comments %v", comments)
+	}
+	if r := tess(t, "comment", id, "Plain"); r.code != 0 || r.stdout != "commented on "+id+"\n" {
+		t.Errorf("plain comment: exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
+	}
+	wantError(t, tess(t, "comment", id, "--json"), "invalid_argument")
+	wantError(t, tess(t, "comment", "t-zzzzzzzz", "x", "--json"), "not_found")
+}

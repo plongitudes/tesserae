@@ -27,6 +27,8 @@ type app struct {
 	stdout io.Writer
 	stderr io.Writer
 	json   bool
+
+	stdinRead bool // a text flag has taken stdin
 }
 
 // run runs one command line and returns the exit code: 0 on success, 1 on

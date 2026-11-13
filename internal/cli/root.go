@@ -42,6 +42,11 @@ func (a *app) rootCommand() *cobra.Command {
 		a.initCommand(),
 		a.createCommand(),
 		a.showCommand(),
+		a.updateCommand(),
+		a.statusCommand(),
+		a.retireCommand(),
+		a.restoreCommand(),
+		a.commentCommand(),
 		a.listCommand(),
 		a.syncCommand(),
 	)

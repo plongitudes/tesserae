@@ -25,61 +25,6 @@ func writeLine(w io.Writer, issue tracker.Issue) {
 	fmt.Fprintf(w, "%s %s %s\n", symbols[issue.Status], issue.ID, issue.Title)
 }
 
-func (a *app) createCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "create TITLE",
-		Short: "Create an issue; prints its ID",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return invalidArgument(
-					fmt.Sprintf("create takes one title, and got %d arguments", len(args)),
-					`quote the title: tess create "Fix the login redirect"`)
-			}
-			return nil
-		},
-		RunE: action(func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			return withTracker(ctx, func(tr tracker.Tracker) error {
-				issue, err := tr.Create(ctx, tracker.NewIssue{Title: args[0]})
-				if err != nil {
-					return err
-				}
-				return a.print(issue, func(w io.Writer) { fmt.Fprintln(w, issue.ID) })
-			})
-		}),
-	}
-}
-
-func (a *app) showCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "show ID...",
-		Short: "Show issues in full, with their links and comments",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: action(func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			return withTracker(ctx, func(tr tracker.Tracker) error {
-				issues := make([]tracker.Issue, 0, len(args))
-				for _, id := range args {
-					issue, err := tr.Get(ctx, id)
-					if err != nil {
-						return err
-					}
-					issues = append(issues, issue)
-				}
-				var result any = issues
-				if len(issues) == 1 {
-					result = issues[0]
-				}
-				return a.print(result, func(w io.Writer) {
-					for _, issue := range issues {
-						writeLine(w, issue)
-					}
-				})
-			})
-		}),
-	}
-}
-
 func (a *app) listCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
