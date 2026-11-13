@@ -225,6 +225,9 @@ func walk(ts *testscript.TestScript, v any, path, rest string) any {
 		ts.Fatalf("bad JSON path %q at %q", path, rest)
 	}
 	rest = rest[len(m):]
+	if len(m) > 1 && m[1] == '[' {
+		m = m[1:] // ".[0]" and ".[*]" are the bracket steps with a leading dot
+	}
 	switch {
 	case m == "[*]":
 		arr, ok := v.([]any)
