@@ -41,6 +41,9 @@ const (
 	CodeInvalidTransition = "invalid_transition"
 	CodeHasOpenChildren   = "has_open_children"
 	CodeBlocked           = "blocked"
+
+	CodeCycle     = "cycle"
+	CodeHasParent = "has_parent"
 )
 
 // Error is a refusal with a stable code. Hint, when set, is a one-line
@@ -125,6 +128,15 @@ type Tracker interface {
 	// changes nothing else but the status reason. force lets a blocked
 	// issue be marked done.
 	Status(ctx context.Context, partialIDs []string, status, reason string, force bool) (Change, error)
+	// Link adds the link `a WORDING b`, in any of LinkWordings, and returns
+	// it in its canonical direction. A link that is already there, in either
+	// wording, is returned as it is and nothing changes.
+	Link(ctx context.Context, a, wording, b string) (Link, error)
+	// Unlink removes the link `a WORDING b` and returns the link removed.
+	Unlink(ctx context.Context, a, wording, b string) (Link, error)
+	// Tree returns the dependency tree below an issue: its children and the
+	// issues it is blocked by, and theirs in turn.
+	Tree(ctx context.Context, partialID string) (TreeNode, error)
 }
 
 type tracker struct {

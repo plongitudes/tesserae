@@ -111,16 +111,24 @@ CREATE INDEX events_by_issue_attr ON events (issue_id, attr, id);
 CREATE VIEW live_issues AS
 SELECT * FROM issues WHERE retired_at IS NULL;
 
--- The readiness-affecting dependencies between live issues: blocks and parent
+-- Every readiness-affecting dependency (GLOSSARY): the blocks and parent
 -- links, both running from the issue that can hold another up (the blocker,
--- the parent) to the issue held up. A link to or from a retired issue is not
--- an edge; its row stays in links and counts again on restore.
+-- the parent) to the issue held up. Retired issues' links are included, so
+-- this is what cycle detection walks: a loop through a retired issue would
+-- close on restore.
+CREATE VIEW readiness_links AS
+SELECT type, from_id, to_id
+FROM links
+WHERE type IN ('blocks', 'parent');
+
+-- The readiness-affecting dependencies between live issues. A link to or from
+-- a retired issue is not an edge; its row stays in links and counts again on
+-- restore.
 CREATE VIEW readiness_edges AS
 SELECT l.type, l.from_id, l.to_id
-FROM links l
+FROM readiness_links l
 JOIN live_issues f ON f.id = l.from_id
-JOIN live_issues t ON t.id = l.to_id
-WHERE l.type IN ('blocks', 'parent');
+JOIN live_issues t ON t.id = l.to_id;
 
 -- Every (issue, ancestor) pair, depth 1 being the parent. Cycles can't be
 -- created (ADR-0016); the depth guard only keeps a damaged database from

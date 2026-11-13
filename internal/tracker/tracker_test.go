@@ -43,8 +43,8 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-// write sets up state that the interface can't reach yet (retiring, links
-// between existing issues, comments).
+// write sets up state that the interface can't reach yet (retiring,
+// comments).
 func (f *fixture) write(fn func(tx *sql.Tx) error) {
 	f.t.Helper()
 	if err := f.s.Write(f.ctx, fn); err != nil {
@@ -340,8 +340,8 @@ func TestChildrenAndAncestors(t *testing.T) {
 func TestGetShowsRelatedAndDiscoveredLinksFromBothEnds(t *testing.T) {
 	f := newFixture(t)
 	a, b := f.titled("A"), f.titled("B")
-	f.exec(`INSERT INTO links (from_id, type, to_id) VALUES (?, 'related', ?)`, a, b)
-	f.exec(`INSERT INTO links (from_id, type, to_id) VALUES (?, 'discovered-from', ?)`, b, a)
+	f.link(a, "related", b)
+	f.link(b, "discovered-from", a)
 
 	ga, gb := f.get(a), f.get(b)
 	wantStrings(t, "A related", ga.Links.Related, b)
