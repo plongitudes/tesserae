@@ -43,8 +43,8 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-// write sets up state that this item's interface can't reach yet (retiring,
-// status changes, links between existing issues, comments).
+// write sets up state that the interface can't reach yet (retiring, links
+// between existing issues, comments).
 func (f *fixture) write(fn func(tx *sql.Tx) error) {
 	f.t.Helper()
 	if err := f.s.Write(f.ctx, fn); err != nil {
@@ -65,11 +65,15 @@ func (f *fixture) retire(id string) {
 	f.exec(`UPDATE issues SET retired_at = '2026-01-05T00:00:00.000Z' WHERE id = ?`, id)
 }
 
+// setStatus sets a status the short way, with a stock reason where one is
+// required.
 func (f *fixture) setStatus(id, status string) {
 	f.t.Helper()
-	f.write(func(tx *sql.Tx) error {
-		return sqlite.UpdateIssue(f.ctx, tx, id, sqlite.Patch{Status: &status}, f.now, "tester")
-	})
+	reason := ""
+	if status == "held" || status == "omit" {
+		reason = "because"
+	}
+	f.status(status, reason, id)
 }
 
 func (f *fixture) tick() { f.now = f.now.Add(time.Second) }

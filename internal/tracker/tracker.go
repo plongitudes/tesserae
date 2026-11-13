@@ -35,6 +35,12 @@ const (
 	CodeAmbiguousID     = ids.CodeAmbiguous
 	CodeInvalidArgument = "invalid_argument"
 	CodeRetired         = "retired"
+
+	CodeInvalidStatus     = "invalid_status"
+	CodeReasonRequired    = "reason_required"
+	CodeInvalidTransition = "invalid_transition"
+	CodeHasOpenChildren   = "has_open_children"
+	CodeBlocked           = "blocked"
 )
 
 // Error is a refusal with a stable code. Hint, when set, is a one-line
@@ -50,7 +56,20 @@ func (e *Error) Error() string { return e.Message }
 // IssueTypes are the values an issue's type can take.
 var IssueTypes = []string{"task", "bug", "feature", "epic", "chore"}
 
+// Statuses are the values a status can be set to, not started being ready.
+// waiting is how a ready issue displays while it's blocked or has open
+// children; it is derived and can't be set (ADR-0009).
+var Statuses = []string{"ready", "in-progress", "pending-review", "held", "done", "omit"}
+
 const defaultPriority = 2
+
+// Change is the result of a command that can unblock other issues: the
+// issues it changed, in the order they were named, and the issues that were
+// blocked before it and aren't after, in list order.
+type Change struct {
+	Updated        []Issue `json:"updated"`
+	NewlyUnblocked []Issue `json:"newly_unblocked"`
+}
 
 // NewIssue is what a caller gives to create an issue. Only Title is needed.
 type NewIssue struct {
@@ -102,6 +121,10 @@ type Tracker interface {
 	Get(ctx context.Context, partialID string, opts ...GetOption) (Issue, error)
 	// Update applies a patch, logging an event for each field that changed.
 	Update(ctx context.Context, partialID string, p Patch) (Issue, error)
+	// Status sets the status of each issue named, all of them or none, and
+	// changes nothing else but the status reason. force lets a blocked
+	// issue be marked done.
+	Status(ctx context.Context, partialIDs []string, status, reason string, force bool) (Change, error)
 }
 
 type tracker struct {
@@ -243,6 +266,128 @@ func (t *tracker) Update(ctx context.Context, partialID string, p Patch) (Issue,
 	return issue, err
 }
 
+func (t *tracker) Status(ctx context.Context, partialIDs []string, status, reason string, force bool) (Change, error) {
+	if !slices.Contains(Statuses, status) {
+		e := &Error{
+			Code:    CodeInvalidStatus,
+			Message: fmt.Sprintf("%q is not a status that can be set", status),
+			Hint:    "statuses: " + strings.Join(Statuses, ", "),
+		}
+		if status == "waiting" {
+			e.Hint = "waiting is how a ready issue shows while it's blocked or has open children; set ready"
+		}
+		return Change{}, e
+	}
+	if len(partialIDs) == 0 {
+		return Change{}, invalid("name at least one issue", "")
+	}
+	if (status == "held" || status == "omit") && strings.TrimSpace(reason) == "" {
+		return Change{}, &Error{
+			Code:    CodeReasonRequired,
+			Message: fmt.Sprintf("setting %s needs a reason", status),
+			Hint:    "give one with -r",
+		}
+	}
+
+	var change Change
+	err := t.store.Write(ctx, func(tx *sql.Tx) error {
+		// Each change is judged against the changes before it in the same
+		// command, so a blocker and its dependent can be finished together.
+		blockedBefore, err := sqlite.BlockedIssues(ctx, tx)
+		if err != nil {
+			return err
+		}
+		var changed []string
+		for _, partial := range partialIDs {
+			id, err := resolveLive(ctx, tx, partial)
+			if err != nil {
+				return err
+			}
+			if slices.Contains(changed, id) {
+				continue
+			}
+			if err := t.setStatus(ctx, tx, id, status, reason, force); err != nil {
+				return err
+			}
+			changed = append(changed, id)
+		}
+		unblocked, err := sqlite.NewlyUnblocked(ctx, tx, blockedBefore)
+		if err != nil {
+			return err
+		}
+		if change.Updated, err = readAll(ctx, tx, changed); err != nil {
+			return err
+		}
+		change.NewlyUnblocked, err = readAll(ctx, tx, unblocked)
+		return err
+	})
+	if err != nil {
+		return Change{}, err
+	}
+	return change, nil
+}
+
+// setStatus is one issue's status change: the transition rules of ADR-0018,
+// then the write. Setting the status an issue already has is not a
+// transition: no rule applies, and only a reason that was given is written.
+func (t *tracker) setStatus(ctx context.Context, tx *sql.Tx, id, status, reason string, force bool) error {
+	current, err := sqlite.StoredStatus(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	patch := sqlite.Patch{Status: &status}
+	if current != status {
+		if err := checkTransition(ctx, tx, id, current, status, force); err != nil {
+			return err
+		}
+		// The reason belongs to the status: a new status without one clears
+		// the old status's reason.
+		patch.StatusReason = &reason
+	} else if reason != "" {
+		patch.StatusReason = &reason
+	}
+	return sqlite.UpdateIssue(ctx, tx, id, patch, t.now(), t.actor)
+}
+
+func checkTransition(ctx context.Context, tx *sql.Tx, id, from, to string, force bool) error {
+	terminal := func(s string) bool { return s == "done" || s == "omit" }
+	if to == "held" && terminal(from) {
+		return &Error{
+			Code:    CodeInvalidTransition,
+			Message: fmt.Sprintf("%s is %s and can't be held", id, from),
+			Hint:    fmt.Sprintf("tess status %s ready reopens it", id),
+		}
+	}
+	if !terminal(to) {
+		return nil
+	}
+	open, err := sqlite.OpenChildren(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if len(open) > 0 {
+		return &Error{
+			Code:    CodeHasOpenChildren,
+			Message: fmt.Sprintf("%s has open children: %s", id, strings.Join(open, ", ")),
+			Hint:    "set each to done or omit first",
+		}
+	}
+	if to == "done" && !force {
+		blocked, err := sqlite.IsBlocked(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if blocked {
+			return &Error{
+				Code:    CodeBlocked,
+				Message: fmt.Sprintf("%s is blocked", id),
+				Hint:    fmt.Sprintf("tess show %s lists what blocks it; --force marks it done anyway", id),
+			}
+		}
+	}
+	return nil
+}
+
 // resolve turns a typed ID into the ID of the issue it means, and says
 // whether that issue is retired (only an exact ID reaches a retired issue).
 func resolve(ctx context.Context, tx *sql.Tx, partialID string) (id string, retired bool, err error) {
@@ -292,6 +437,19 @@ func read(ctx context.Context, tx *sql.Tx, id string) (Issue, error) {
 		err = fmt.Errorf("issue %s is missing", id)
 	}
 	return issue, err
+}
+
+// readAll reads issues in the order given; the result is never nil.
+func readAll(ctx context.Context, tx *sql.Tx, ids []string) ([]Issue, error) {
+	issues := make([]Issue, 0, len(ids))
+	for _, id := range ids {
+		issue, err := read(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		issues = append(issues, issue)
+	}
+	return issues, nil
 }
 
 func invalid(message, hint string) *Error {
