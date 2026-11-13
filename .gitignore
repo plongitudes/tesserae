@@ -3,3 +3,7 @@
 .venv/
 # throwaway benchmark code; results live in docs/spikes/
 /spikes/
+# ralph loop state: caches and logs
+/.ralph/
+# check.sh build output
+/bin/
