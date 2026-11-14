@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"time"
@@ -152,6 +153,9 @@ type Tracker interface {
 	// any, by issue ID, each in list order. A blocked issue that isn't in
 	// it is blocked through an ancestor.
 	ActiveBlockers(ctx context.Context) (map[string][]string, error)
+	// Import adds the issues of an old bd issues.jsonl, keeping their IDs
+	// and skipping any that are already here, all of them or none.
+	Import(ctx context.Context, r io.Reader) (ImportResult, error)
 }
 
 type tracker struct {

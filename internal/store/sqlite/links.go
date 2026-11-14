@@ -110,12 +110,23 @@ func ClosesLoop(ctx context.Context, tx *sql.Tx, from, to string) (bool, error) 
 // updated_at moves to at. The caller has checked that the link is new and
 // allowed.
 func InsertLink(ctx context.Context, tx *sql.Tx, l Link, at time.Time, by string) error {
+	if err := InsertLinkUnlogged(ctx, tx, l); err != nil {
+		return err
+	}
+	issueID, attr, other := linkEvent(l)
+	return logLinkChange(ctx, tx, issueID, attr, nil, other, at, by)
+}
+
+// InsertLinkUnlogged adds a link, given in its canonical direction, that an
+// issue arrives with: like the links an issue is created with, it logs no
+// event and moves no updated_at (ADR-0013). It is for import; a link made on
+// an issue that is already here goes through InsertLink.
+func InsertLinkUnlogged(ctx context.Context, tx *sql.Tx, l Link) error {
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO links (from_id, type, to_id) VALUES (?, ?, ?)`, l.From, l.Type, l.To); err != nil {
 		return fmt.Errorf("link %s %s %s: %w", l.From, l.Type, l.To, err)
 	}
-	issueID, attr, other := linkEvent(l)
-	return logLinkChange(ctx, tx, issueID, attr, nil, other, at, by)
+	return nil
 }
 
 // DeleteLink removes a link, given as it is stored, and logs it as one event

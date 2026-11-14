@@ -77,7 +77,9 @@ type Comment struct {
 }
 
 // NewIssue is a fully decided issue to insert: the tracker has allocated the
-// ID, applied defaults, and resolved the IDs it links to.
+// ID, applied defaults, and resolved the IDs it links to. The fields after
+// CreatedBy are for an issue that arrives with a past (an import); left zero,
+// the issue is ready, unowned, live, and last updated when it was created.
 type NewIssue struct {
 	ID                 string
 	Title              string
@@ -93,6 +95,13 @@ type NewIssue struct {
 	BlockedBy          []string // the blockers' IDs
 	CreatedAt          time.Time
 	CreatedBy          string
+
+	Status       string // "" for ready
+	StatusReason string // "" for none
+	Owner        string // "" for none
+	DueAt        time.Time
+	UpdatedAt    time.Time // zero for CreatedAt
+	RetiredAt    time.Time
 }
 
 // InsertIssue writes a new issue with its texts, labels, and the links it is
@@ -108,13 +117,21 @@ func InsertIssue(ctx context.Context, tx *sql.Tx, n NewIssue) error {
 		}
 		hashes[i] = h
 	}
-	at := FormatTime(n.CreatedAt)
+	status, updatedAt := n.Status, n.UpdatedAt
+	if status == "" {
+		status = "ready"
+	}
+	if updatedAt.IsZero() {
+		updatedAt = n.CreatedAt
+	}
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO issues (id, title, description, design, acceptance_criteria, notes,
-		                     type, priority, assignee, created_at, created_by, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                     type, priority, status, status_reason, assignee, owner, due_at,
+		                     created_at, created_by, updated_at, retired_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		n.ID, n.Title, hashes[0], hashes[1], hashes[2], hashes[3],
-		n.Type, n.Priority, nullable(n.Assignee), at, n.CreatedBy, at)
+		n.Type, n.Priority, status, nullable(n.StatusReason), nullable(n.Assignee), nullable(n.Owner),
+		nullableTime(n.DueAt), FormatTime(n.CreatedAt), n.CreatedBy, FormatTime(updatedAt), nullableTime(n.RetiredAt))
 	if err != nil {
 		return fmt.Errorf("insert issue %s: %w", n.ID, err)
 	}
@@ -545,6 +562,14 @@ func queryStrings(ctx context.Context, tx *sql.Tx, query string, args ...any) ([
 
 // nullable is s as a column value, the empty string being NULL.
 func nullable(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
+
+// nullableTime is t as a column value, the zero time being NULL.
+func nullableTime(t time.Time) sql.NullString {
+	if t.IsZero() {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: FormatTime(t), Valid: true}
+}
 
 // nullableAny is s as an event value, the empty string being null.
 func nullableAny(s string) any {
