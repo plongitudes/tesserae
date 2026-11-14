@@ -50,6 +50,7 @@ func (a *app) rootCommand() *cobra.Command {
 		a.linkCmd(),
 		a.unlinkCmd(),
 		a.treeCommand(),
+		a.readyCommand(),
 		a.listCommand(),
 		a.syncCommand(),
 	)

@@ -264,3 +264,33 @@ func TestListedIssuesReadAsGetReadsThem(t *testing.T) {
 		}
 	}
 }
+
+func TestActiveBlockersNamesWhatHoldsEachBlockedIssueUp(t *testing.T) {
+	f := newFixture(t)
+	add := func(n tracker.NewIssue) string {
+		f.tick()
+		return f.create(n).ID
+	}
+	low := add(tracker.NewIssue{Title: "Low blocker", Priority: ptr(3)})
+	high := add(tracker.NewIssue{Title: "High blocker", Priority: ptr(0)})
+	finished := add(tracker.NewIssue{Title: "Finished blocker"})
+	gone := add(tracker.NewIssue{Title: "Retired blocker"})
+	parent := add(tracker.NewIssue{Title: "Parent", BlockedBy: []string{low, high, finished, gone}})
+	child := add(tracker.NewIssue{Title: "Child", Parent: parent})
+	freed := add(tracker.NewIssue{Title: "Freed", BlockedBy: []string{finished}})
+	f.setStatus(finished, "done")
+	f.retire(gone)
+
+	got, err := f.tr.ActiveBlockers(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Blockers come in list order; a done or retired blocker isn't one. The
+	// child is blocked through its parent and has no blocker of its own.
+	want := map[string][]string{parent: {high, low}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ActiveBlockers = %v, want %v (child %s, freed %s)", got, want, child, freed)
+	}
+	// The same issues, and no others, are what the blocked list starts from.
+	wantStrings(t, "blocked", f.list(tracker.Filter{Blocked: true}), parent, child)
+}

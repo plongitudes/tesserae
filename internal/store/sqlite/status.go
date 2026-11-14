@@ -59,3 +59,26 @@ func NewlyUnblocked(ctx context.Context, tx *sql.Tx, blockedBefore []string) ([]
 		   AND i.id NOT IN (SELECT id FROM blocked_issues)
 		 ORDER BY i.priority, i.created_at, i.id`, string(before))
 }
+
+// ActiveBlockers returns, for every issue that has them, its active
+// blockers in list order, read from the view blocked_issues is built on.
+func ActiveBlockers(ctx context.Context, tx *sql.Tx) (map[string][]string, error) {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT b.id, b.blocker_id
+		 FROM active_blockers b
+		 JOIN live_issues i ON i.id = b.blocker_id
+		 ORDER BY i.priority, i.created_at, i.id`)
+	if err != nil {
+		return nil, fmt.Errorf("read active blockers: %w", err)
+	}
+	defer rows.Close()
+	blockers := map[string][]string{}
+	for rows.Next() {
+		var id, blocker string
+		if err := rows.Scan(&id, &blocker); err != nil {
+			return nil, err
+		}
+		blockers[id] = append(blockers[id], blocker)
+	}
+	return blockers, rows.Err()
+}

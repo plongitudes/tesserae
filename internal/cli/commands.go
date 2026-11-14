@@ -25,28 +25,6 @@ func writeLine(w io.Writer, issue tracker.Issue) {
 	fmt.Fprintf(w, "%s %s %s\n", symbols[issue.Status], issue.ID, issue.Title)
 }
 
-func (a *app) listCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List issues",
-		Args:  cobra.NoArgs,
-		RunE: action(func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			return withTracker(ctx, func(tr tracker.Tracker) error {
-				issues, err := tr.List(ctx, tracker.Filter{})
-				if err != nil {
-					return err
-				}
-				return a.print(issues, func(w io.Writer) {
-					for _, issue := range issues {
-						writeLine(w, issue)
-					}
-				})
-			})
-		}),
-	}
-}
-
 func (a *app) syncCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",

@@ -148,6 +148,10 @@ type Tracker interface {
 	// List returns the issues a filter selects, in list order: priority,
 	// then created_at, then id.
 	List(ctx context.Context, f Filter) ([]Issue, error)
+	// ActiveBlockers returns the active blockers of every issue that has
+	// any, by issue ID, each in list order. A blocked issue that isn't in
+	// it is blocked through an ancestor.
+	ActiveBlockers(ctx context.Context) (map[string][]string, error)
 }
 
 type tracker struct {

@@ -21,12 +21,24 @@ func Main() int {
 	return run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 }
 
+// isTerminal reports whether w is a terminal, by the file's mode bits
+// (ADR-0020: no terminal library).
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
 // app is one run of tess: its streams and its global flags.
 type app struct {
 	stdin  io.Reader
 	stdout io.Writer
 	stderr io.Writer
 	json   bool
+	tty    bool // stdout is a terminal: lists are trees, and there is colour
 
 	stdinRead bool // a text flag has taken stdin
 }
@@ -34,7 +46,11 @@ type app struct {
 // run runs one command line and returns the exit code: 0 on success, 1 on
 // any error. The working directory and the environment are the process's.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	a := &app{stdin: stdin, stdout: stdout, stderr: stderr}
+	a := &app{stdin: stdin, stdout: stdout, stderr: stderr, tty: isTerminal(stdout)}
+	return a.run(args)
+}
+
+func (a *app) run(args []string) int {
 	root := a.rootCommand()
 	root.SetArgs(args)
 	if err := root.ExecuteContext(context.Background()); err != nil {

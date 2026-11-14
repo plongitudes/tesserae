@@ -68,3 +68,13 @@ func (t *tracker) List(ctx context.Context, f Filter) ([]Issue, error) {
 	})
 	return issues, err
 }
+
+func (t *tracker) ActiveBlockers(ctx context.Context) (map[string][]string, error) {
+	var blockers map[string][]string
+	err := t.store.Read(ctx, func(tx *sql.Tx) error {
+		var err error
+		blockers, err = sqlite.ActiveBlockers(ctx, tx)
+		return err
+	})
+	return blockers, err
+}

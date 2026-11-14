@@ -144,16 +144,22 @@ WITH RECURSIVE up (id, ancestor_id, depth) AS (
 )
 SELECT id, ancestor_id, depth FROM up;
 
+-- An issue's active blockers (GLOSSARY): the issues with a blocks link to it
+-- that aren't done or omit. blocked_issues starts from this, and it is what
+-- a list of blocked issues names as their blockers.
+CREATE VIEW active_blockers (id, blocker_id) AS
+SELECT e.to_id, e.from_id
+FROM readiness_edges e
+JOIN live_issues blocker ON blocker.id = e.from_id
+WHERE e.type = 'blocks' AND blocker.status NOT IN ('done', 'omit');
+
 -- THE definition of blocked (ADR-0007): an issue with an active blocker (a
 -- blocks link from an issue that isn't done or omit), or with an ancestor
 -- that is blocked or held. A held issue is not itself blocked by being held,
 -- and open children never make their parent blocked (ADR-0016).
 CREATE VIEW blocked_issues (id) AS
 WITH RECURSIVE blocked (id, depth) AS (
-    SELECT e.to_id, 0
-    FROM readiness_edges e
-    JOIN live_issues blocker ON blocker.id = e.from_id
-    WHERE e.type = 'blocks' AND blocker.status NOT IN ('done', 'omit')
+    SELECT id, 0 FROM active_blockers
     UNION
     SELECT e.to_id, 0
     FROM readiness_edges e
