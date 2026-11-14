@@ -47,6 +47,9 @@ func (a *app) rootCommand() *cobra.Command {
 		a.retireCommand(),
 		a.restoreCommand(),
 		a.commentCommand(),
+		a.linkCmd(),
+		a.unlinkCmd(),
+		a.treeCommand(),
 		a.listCommand(),
 		a.syncCommand(),
 	)
