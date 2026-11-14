@@ -21,10 +21,10 @@ func Main() int {
 	return run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 }
 
-// isTerminal reports whether w is a terminal, by the file's mode bits
+// isTerminal reports whether a stream is a terminal, by the file's mode bits
 // (ADR-0020: no terminal library).
-func isTerminal(w io.Writer) bool {
-	f, ok := w.(*os.File)
+func isTerminal(stream any) bool {
+	f, ok := stream.(*os.File)
 	if !ok {
 		return false
 	}

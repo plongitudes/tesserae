@@ -108,3 +108,16 @@ func withTracker(ctx context.Context, fn func(tr tracker.Tracker) error) error {
 	defer closeDB()
 	return fn(tr)
 }
+
+// worktreeRoot returns the top directory of the worktree the working
+// directory is in: where files meant to be committed go.
+func worktreeRoot(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		if _, err := gitCommonDir(ctx); err != nil {
+			return "", err
+		}
+		return "", invalidArgument("this is a git repository, but not inside a working tree", "run this from a checkout of the repository")
+	}
+	return filepath.Abs(strings.TrimSuffix(string(out), "\n"))
+}
