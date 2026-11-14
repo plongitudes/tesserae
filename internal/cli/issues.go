@@ -74,6 +74,18 @@ func (a *app) createCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create TITLE",
 		Short: "Create an issue; prints its ID",
+		Long: `Create an issue; prints its ID.
+
+The issue starts as ready. Give the title as one argument, in quotes. The
+long texts (--description, --design, --acceptance, --notes) take their value
+verbatim, or "-" to read it from stdin; one text per command can be "-".
+With --json the whole issue is printed.`,
+		Example: `  tess create "Fix the login redirect"
+  tess create "Fix the login redirect" -t bug -p 1 -l auth -l urgent
+  tess create "Write the migration" --parent api-7kq -b api-m2x -a sam
+  tess create "Rate limiting" -t epic -d "Per-key limits on the public API"
+  cat design.md | tess create "Token refresh" --design -
+  tess create "Flaky upload test" -t bug --json`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return invalidArgument(
@@ -128,7 +140,16 @@ func (a *app) showCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show ID...",
 		Short: "Show issues in full, with their links and comments",
-		Args:  cobra.MinimumNArgs(1),
+		Long: `Show issues in full, with their links and comments.
+
+With --json, one ID prints one issue object and several print an array, in
+the order asked. A retired issue can be shown by its exact ID.`,
+		Example: `  tess show api-7kq
+  tess show 7kq                  # any part of an ID that names one issue
+  tess show api-7kq api-m2x
+  tess show api-7kq --history    # every change, oldest first
+  tess show api-7kq --json`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			var opts []tracker.GetOption
 			if history {
@@ -196,7 +217,18 @@ func (a *app) updateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update ID",
 		Short: "Change any field of an issue but its status",
-		Args:  cobra.ExactArgs(1),
+		Long: `Change any field of an issue but its status.
+
+Only the flags given are changed. An empty value clears a field that can be
+empty. The long texts take "-" to read stdin, as in create. The status is
+changed with tess status, and links with tess link.`,
+		Example: `  tess update api-7kq --title "Fix the login redirect loop"
+  tess update api-7kq -p 0 -a sam
+  tess update api-7kq --add-label auth --remove-label urgent
+  tess update api-7kq --due 2026-03-01
+  tess update api-7kq --due "" -a ""         # clear the due date and the assignee
+  git diff --stat | tess update api-7kq --notes -`,
+		Args: cobra.ExactArgs(1),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			fields := 0
 			for _, name := range updateFlags {

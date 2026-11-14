@@ -348,6 +348,12 @@ func (a *app) setupCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup claude",
 		Short: "Write the files that let a coding agent use tess",
+		Long: `Write the files that let a coding agent use tess.
+
+Claude Code is the one agent there is a setup for; see tess setup claude --help.`,
+		Example: `  tess setup claude
+  tess setup claude --check
+  tess setup claude --remove`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			return invalidArgument("setup takes what to set up", "as in `tess setup claude`")
 		},

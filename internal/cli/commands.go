@@ -29,7 +29,11 @@ func (a *app) syncCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",
 		Short: "Share issues with other machines (not available yet)",
-		Args:  cobra.NoArgs,
+		Long: `Share issues with other machines (not available yet).
+
+For now this does nothing and says so on stderr; it is safe to run.`,
+		Example: `  tess sync`,
+		Args:    cobra.NoArgs,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			// With --json, stderr carries only an error object.
 			if !a.json {

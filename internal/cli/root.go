@@ -25,6 +25,21 @@ func (a *app) rootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "tess",
 		Short: "Issue tracker for a git repository",
+		Long: `Issue tracker for a git repository.
+
+The issues live in one database in git's common directory, shared by every
+worktree. An issue that is ready can be worked on now; one that is blocked,
+or has open children, shows as waiting until that clears.
+
+Every command takes --json. An ID can be shortened to any part of it that
+names one issue.`,
+		Example: `  tess init --prefix api
+  tess create "Fix the login redirect" -t bug -p 1
+  tess ready
+  tess status api-7kq in-progress
+  tess link api-7kq blocks api-m2x
+  tess status api-7kq done
+  tess list --status waiting --json`,
 		// Errors are printed once, by run, in the shape --json asks for.
 		SilenceErrors: true,
 		SilenceUsage:  true,

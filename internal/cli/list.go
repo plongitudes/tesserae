@@ -29,7 +29,17 @@ func (a *app) readyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ready",
 		Short: "List the issues that can be worked on now, by priority",
-		Args:  cobra.NoArgs,
+		Long: `List the issues that can be worked on now, by priority.
+
+An issue is listed when its status is ready, nothing blocks it, and it has no
+open children. The order is priority, then age. On a terminal each issue is
+shown under its ancestors; elsewhere the output is one line per issue.`,
+		Example: `  tess ready
+  tess ready -n 3
+  tess ready -n 0                # all of them
+  tess ready --flat | head -1
+  tess ready --json`,
+		Args: cobra.NoArgs,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			return a.list(cmd.Context(), filter, l)
 		}),
@@ -45,7 +55,23 @@ func (a *app) listCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List issues, by priority; done, omit and retired issues are left out",
-		Args:  cobra.NoArgs,
+		Long: `List issues, by priority; done, omit and retired issues are left out.
+
+The filters combine: an issue is listed when it passes all of them. --all
+adds done and omit issues, and so does naming one with --status. --retired
+lists the retired issues and nothing else. On a terminal each issue is shown
+under its ancestors; elsewhere the output is one line per issue.`,
+		Example: `  tess list
+  tess list --status in-progress
+  tess list --status waiting --assignee sam
+  tess list --blocked                      # with what blocks each one
+  tess list --parent api-7kq --all         # everything under an epic
+  tess list --type bug --label auth -n 20
+  tess list -s "redirect"
+  tess list --retired
+  tess list --tree | less
+  tess list --all --json`,
+		Args: cobra.NoArgs,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			return a.list(cmd.Context(), filter, l)
 		}),

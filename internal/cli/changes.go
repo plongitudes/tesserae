@@ -30,6 +30,30 @@ func (a *app) statusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status ID... STATUS",
 		Short: "Set the status of issues; prints the issues newly unblocked",
+		Long: `Set the status of issues; prints the issues newly unblocked.
+
+Statuses:
+  ready            not started; shows as waiting while it is blocked or has
+                   open children
+  in-progress      being worked on
+  pending-review   the work is finished and waits for a review
+  held             set aside for now; needs -r REASON
+  done             finished; refused while the issue is blocked, unless
+                   --force, and while it has open children
+  omit             dropped without being done; needs -r REASON; refused while
+                   it has open children
+
+waiting can't be set: it is how a ready issue shows. Nothing but the status
+and its reason is changed. Several IDs are changed together or not at all.`,
+		Example: `  tess status api-7kq in-progress
+  tess status api-7kq pending-review
+  tess status api-7kq done
+  tess status api-7kq api-m2x done            # several at once
+  tess status api-7kq held -r "waiting for the vendor's reply"
+  tess status api-7kq omit -r "superseded by api-m2x"
+  tess status api-7kq ready                   # end a hold, or reopen
+  tess status api-7kq done --force            # done although blocked
+  tess status api-7kq done --json`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 2 {
 				return invalidArgument(
@@ -65,7 +89,16 @@ func (a *app) retireCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "retire ID...",
 		Short: "Hide issues permanently; prints the issues newly unblocked",
-		Args:  cobra.MinimumNArgs(1),
+		Long: `Hide issues permanently; prints the issues newly unblocked.
+
+Retiring is for an issue that shouldn't have existed: a mistake, a duplicate,
+a test. A retired issue is left out everywhere and blocks nothing, but it is
+kept, and tess restore brings it back. Work that was dropped is tess status
+ID omit instead.`,
+		Example: `  tess retire api-7kq
+  tess retire api-7kq -r "duplicate of api-m2x"
+  tess retire api-7kq api-m2x --json`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			return withTracker(ctx, func(tr tracker.Tracker) error {
@@ -90,7 +123,13 @@ func (a *app) restoreCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "restore ID",
 		Short: "Bring a retired issue back; takes the exact ID",
-		Args:  cobra.ExactArgs(1),
+		Long: `Bring a retired issue back; takes the exact ID.
+
+A retired issue is not found by part of its ID, so give the whole of it;
+tess list --retired shows them.`,
+		Example: `  tess restore api-7kq
+  tess restore api-7kq --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			return withTracker(ctx, func(tr tracker.Tracker) error {
@@ -110,7 +149,14 @@ func (a *app) commentCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "comment ID TEXT",
 		Short: `Add a comment to an issue; TEXT "-" reads stdin`,
-		Args:  cobra.ExactArgs(2),
+		Long: `Add a comment to an issue; TEXT "-" reads stdin.
+
+A comment is kept as written and can't be changed afterwards. Its author is
+whoever runs the command.`,
+		Example: `  tess comment api-7kq "Reproduced on staging; the redirect drops the query string"
+  git log -3 --oneline | tess comment api-7kq -
+  tess comment api-7kq "Fixed in the auth branch" --json`,
+		Args: cobra.ExactArgs(2),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			text, err := a.text("the comment", args[1])
 			if err != nil {
