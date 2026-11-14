@@ -11,6 +11,10 @@ import (
 	"github.com/plongitudes/tesserae/internal/store/sqlite"
 )
 
+// retireComment is where the reason for retiring an issue is kept: the text
+// of a comment on it, since retired is not a status and has no reason field.
+func retireComment(reason string) string { return "Retired: " + reason }
+
 func (t *tracker) Retire(ctx context.Context, partialIDs []string, reason string) (Change, error) {
 	if len(partialIDs) == 0 {
 		return Change{}, invalid("name at least one issue", "")
@@ -40,7 +44,7 @@ func (t *tracker) Retire(ctx context.Context, partialIDs []string, reason string
 				return err
 			}
 			if strings.TrimSpace(reason) != "" {
-				if _, err := sqlite.InsertComment(ctx, tx, id, t.actor, "Retired: "+reason, now); err != nil {
+				if _, err := sqlite.InsertComment(ctx, tx, id, t.actor, retireComment(reason), now); err != nil {
 					return err
 				}
 			}

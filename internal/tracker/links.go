@@ -56,15 +56,8 @@ func (t *tracker) Link(ctx context.Context, a, wording, b string) (Link, error) 
 		if err != nil {
 			return err
 		}
-		link, _ = canonical(idA, wording, idB)
-		readiness := link.Type == sqlite.LinkBlocks || link.Type == sqlite.LinkParent
-		if idA == idB {
-			if readiness {
-				return cycleError(link)
-			}
-			return invalid(fmt.Sprintf("%s can't be linked to itself", idA), "")
-		}
-		existing, ok, err := sqlite.FindLink(ctx, tx, link)
+		asked, _ := canonical(idA, wording, idB)
+		existing, ok, err := admitLink(ctx, tx, asked)
 		if err != nil {
 			return err
 		}
@@ -72,36 +65,56 @@ func (t *tracker) Link(ctx context.Context, a, wording, b string) (Link, error) 
 			link = existing
 			return nil
 		}
-		if link.Type == sqlite.LinkParent {
-			// Read from the links, not the issue: a retired parent doesn't
-			// show, but its link is there and comes back on restore.
-			parent, has, err := sqlite.ParentOf(ctx, tx, link.To)
-			if err != nil {
-				return err
-			}
-			if has {
-				return &Error{
-					Code:    CodeHasParent,
-					Message: fmt.Sprintf("%s already has a parent, %s", link.To, parent),
-					Hint:    fmt.Sprintf("tess unlink %s parent-of %s first", parent, link.To),
-				}
-			}
-		}
-		if readiness {
-			loop, err := sqlite.ClosesLoop(ctx, tx, link.From, link.To)
-			if err != nil {
-				return err
-			}
-			if loop {
-				return cycleError(link)
-			}
-		}
+		link = asked
 		return sqlite.InsertLink(ctx, tx, link, t.now(), t.actor)
 	})
 	if err != nil {
 		return Link{}, err
 	}
 	return link, nil
+}
+
+// admitLink holds a link between two issues that exist, given in its
+// canonical direction, to the rules for a new link, whoever is making it
+// (Link, Import). A link that is already there, a related one either way
+// round, is returned as it is stored, and there is nothing to add. Otherwise
+// it is refused when it links an issue to itself, gives an issue a second
+// parent (has_parent), or closes a loop of blocks and parent links (cycle).
+func admitLink(ctx context.Context, tx *sql.Tx, link Link) (existing Link, ok bool, err error) {
+	if link.From == link.To {
+		if link.AffectsReadiness() {
+			return Link{}, false, cycleError(link)
+		}
+		return Link{}, false, invalid(fmt.Sprintf("%s can't be linked to itself", link.From), "")
+	}
+	if existing, ok, err = sqlite.FindLink(ctx, tx, link); err != nil || ok {
+		return existing, ok, err
+	}
+	if link.Type == sqlite.LinkParent {
+		// Read from the links, not the issue: a retired parent doesn't
+		// show, but its link is there and comes back on restore.
+		parent, has, err := sqlite.ParentOf(ctx, tx, link.To)
+		if err != nil {
+			return Link{}, false, err
+		}
+		if has {
+			return Link{}, false, &Error{
+				Code:    CodeHasParent,
+				Message: fmt.Sprintf("%s already has a parent, %s", link.To, parent),
+				Hint:    fmt.Sprintf("tess unlink %s parent-of %s first", parent, link.To),
+			}
+		}
+	}
+	if link.AffectsReadiness() {
+		loop, err := sqlite.ClosesLoop(ctx, tx, link.From, link.To)
+		if err != nil {
+			return Link{}, false, err
+		}
+		if loop {
+			return Link{}, false, cycleError(link)
+		}
+	}
+	return Link{}, false, nil
 }
 
 func (t *tracker) Unlink(ctx context.Context, a, wording, b string) (Link, error) {

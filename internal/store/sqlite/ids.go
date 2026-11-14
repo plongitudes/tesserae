@@ -19,15 +19,15 @@ type IDCandidate struct {
 // exactly that ID if there is one, otherwise every issue whose ID contains
 // the input, compared literally and case-sensitively. Retired issues are
 // included and marked, because an exact ID reaches a retired issue and a
-// partial one must not (ADR-0010). This reads the issues table directly, not
-// live_issues, for that reason.
+// partial one must not (ADR-0010). So this reads the issues table, and takes
+// "retired" from live_issues, where the filter is defined.
 func IDCandidates(ctx context.Context, tx *sql.Tx, input string) ([]IDCandidate, error) {
 	if input == "" {
 		return nil, nil
 	}
 	// The exact ID is a primary-key lookup; only a partial ID pays for a scan
 	// of the key.
-	rows, err := tx.QueryContext(ctx, `SELECT id, retired_at IS NOT NULL FROM issues WHERE id = ?`, input)
+	rows, err := tx.QueryContext(ctx, `SELECT i.id, `+isRetired+` FROM issues i WHERE i.id = ?`, input)
 	if err != nil {
 		return nil, err
 	}
@@ -36,12 +36,15 @@ func IDCandidates(ctx context.Context, tx *sql.Tx, input string) ([]IDCandidate,
 		return exact, err
 	}
 	rows, err = tx.QueryContext(ctx,
-		`SELECT id, retired_at IS NOT NULL FROM issues WHERE instr(id, ?) > 0 ORDER BY id`, input)
+		`SELECT i.id, `+isRetired+` FROM issues i WHERE instr(i.id, ?) > 0 ORDER BY i.id`, input)
 	if err != nil {
 		return nil, err
 	}
 	return scanIDCandidates(rows)
 }
+
+// isRetired is whether the issue i is retired: not among live_issues.
+const isRetired = `NOT EXISTS (SELECT 1 FROM live_issues live WHERE live.id = i.id)`
 
 func scanIDCandidates(rows *sql.Rows) ([]IDCandidate, error) {
 	defer rows.Close()

@@ -208,15 +208,24 @@ func (p painter) line(issue tracker.Issue) string {
 	if p.blockers == nil {
 		return line
 	}
-	if blockers := p.blockers[issue.ID]; len(blockers) > 0 {
-		return line + " (blocked by " + strings.Join(blockers, ", ") + ")"
-	}
-	// Blocked with no active blocker of its own: an ancestor is blocked
-	// or held, so the parent is where to look next.
-	if issue.Blocked && issue.Parent != nil {
-		return line + " (blocked through " + *issue.Parent + ")"
+	if why := whyBlocked(issue, p.blockers); why != "" {
+		return line + " (" + why + ")"
 	}
 	return line
+}
+
+// whyBlocked says what blocks an issue, given every issue's active blockers
+// (Tracker.ActiveBlockers): those of its own, or, with none of its own, the
+// parent, since an ancestor is then blocked or held and the parent is where
+// to look next. It is empty for an issue that isn't blocked.
+func whyBlocked(issue tracker.Issue, blockers map[string][]string) string {
+	if own := blockers[issue.ID]; len(own) > 0 {
+		return "blocked by " + strings.Join(own, ", ")
+	}
+	if issue.Blocked && issue.Parent != nil {
+		return "blocked through " + *issue.Parent
+	}
+	return ""
 }
 
 // writeGroups writes nodes and what is under them, two spaces further in

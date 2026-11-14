@@ -26,6 +26,11 @@ type Link struct {
 	To   string `json:"to"`
 }
 
+// AffectsReadiness reports whether the link is a readiness-affecting
+// dependency: one of the types the readiness_links view is made of, which
+// are the ones that can close a loop (ADR-0015).
+func (l Link) AffectsReadiness() bool { return l.Type == LinkBlocks || l.Type == LinkParent }
+
 // linkEvent says where a link is logged: on which end's history, and under
 // which attribute. The value logged is the other end's ID. Links are logged
 // once, on the dependent or child side (acceptance/README.md, "Event
@@ -118,9 +123,9 @@ func InsertLink(ctx context.Context, tx *sql.Tx, l Link, at time.Time, by string
 }
 
 // InsertLinkUnlogged adds a link, given in its canonical direction, that an
-// issue arrives with: like the links an issue is created with, it logs no
-// event and moves no updated_at (ADR-0013). It is for import; a link made on
-// an issue that is already here goes through InsertLink.
+// issue arrives with, created or imported: it logs no event and moves no
+// updated_at (ADR-0013). It is the one insert of a link row; a link made on
+// an issue that is already here goes through InsertLink, which logs it.
 func InsertLinkUnlogged(ctx context.Context, tx *sql.Tx, l Link) error {
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO links (from_id, type, to_id) VALUES (?, ?, ?)`, l.From, l.Type, l.To); err != nil {

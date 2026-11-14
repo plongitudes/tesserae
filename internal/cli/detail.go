@@ -15,7 +15,7 @@ func stamp(at time.Time) string { return at.UTC().Format(time.RFC3339) }
 
 // writeDetail writes an issue in full for a person: its list line, its
 // fields, its texts, and whatever of its links, comments and history are
-// loaded. Empty optional values are left out.
+// loaded. With the history, the comments are shown in it, where they fall. Empty optional values are left out.
 func writeDetail(w io.Writer, issue tracker.Issue) {
 	writeLine(w, issue)
 
@@ -79,24 +79,39 @@ func writeDetail(w io.Writer, issue tracker.Issue) {
 	section("Acceptance criteria", issue.AcceptanceCriteria)
 	section("Notes", issue.Notes)
 
-	if len(issue.Comments) > 0 {
-		fmt.Fprintln(w, "\nComments:")
-		for _, c := range issue.Comments {
-			fmt.Fprintf(w, "  %s %s:\n", stamp(c.CreatedAt), c.Author)
-			for _, line := range strings.Split(strings.TrimRight(c.Text, "\n"), "\n") {
-				fmt.Fprintf(w, "    %s\n", line)
-			}
+	comment := func(c tracker.Comment, says string) {
+		fmt.Fprintf(w, "  %s %s%s:\n", stamp(c.CreatedAt), c.Author, says)
+		for _, line := range strings.Split(strings.TrimRight(c.Text, "\n"), "\n") {
+			fmt.Fprintf(w, "    %s\n", line)
 		}
 	}
 	// History is nil unless it was asked for, and empty for a new issue.
-	if issue.History != nil {
-		fmt.Fprintln(w, "\nHistory:")
-		if len(issue.History) == 0 {
-			fmt.Fprintln(w, "  no changes since it was created")
+	if issue.History == nil {
+		if len(issue.Comments) > 0 {
+			fmt.Fprintln(w, "\nComments:")
+			for _, c := range issue.Comments {
+				comment(c, "")
+			}
 		}
-		for _, e := range issue.History {
-			fmt.Fprintf(w, "  %s %s: %s %s → %s\n", stamp(e.ChangedAt), e.ChangedBy, e.Attr, eventValue(e.OldValue), eventValue(e.NewValue))
+		return
+	}
+	// The log, interleaved with the comments (ADR-0013). Both are oldest
+	// first; at the same instant a change comes before a comment, as a
+	// retirement comes before the comment that keeps its reason.
+	fmt.Fprintln(w, "\nHistory:")
+	if len(issue.History) == 0 && len(issue.Comments) == 0 {
+		fmt.Fprintln(w, "  no changes since it was created")
+	}
+	comments := issue.Comments
+	for _, e := range issue.History {
+		for len(comments) > 0 && comments[0].CreatedAt.Before(e.ChangedAt) {
+			comment(comments[0], " commented")
+			comments = comments[1:]
 		}
+		fmt.Fprintf(w, "  %s %s: %s %s → %s\n", stamp(e.ChangedAt), e.ChangedBy, e.Attr, eventValue(e.OldValue), eventValue(e.NewValue))
+	}
+	for _, c := range comments {
+		comment(c, " commented")
 	}
 }
 

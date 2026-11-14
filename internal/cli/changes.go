@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -20,6 +21,18 @@ func writeNewlyUnblocked(w io.Writer, issues []tracker.Issue) {
 		fmt.Fprint(w, "  ")
 		writeLine(w, issue)
 	}
+}
+
+func showsAsWaiting(issue tracker.Issue) bool { return issue.Status == "waiting" }
+
+// whyWaiting says what a waiting issue waits for (ADR-0018): what blocks it,
+// or, when nothing does, its open children, which are the only other thing
+// that makes a ready issue show as waiting.
+func whyWaiting(issue tracker.Issue, blockers map[string][]string) string {
+	if why := whyBlocked(issue, blockers); why != "" {
+		return why
+	}
+	return "it has open children"
 }
 
 func (a *app) statusCommand() *cobra.Command {
@@ -70,9 +83,19 @@ and its reason is changed. Several IDs are changed together or not at all.`,
 				if err != nil {
 					return err
 				}
+				// Only the plain output says why an issue shows as waiting.
+				var blockers map[string][]string
+				if !a.json && slices.ContainsFunc(change.Updated, showsAsWaiting) {
+					if blockers, err = tr.ActiveBlockers(ctx); err != nil {
+						return err
+					}
+				}
 				return a.print(change, func(w io.Writer) {
 					for _, issue := range change.Updated {
 						writeLine(w, issue)
+						if showsAsWaiting(issue) {
+							fmt.Fprintf(w, "  shows as waiting: %s\n", whyWaiting(issue, blockers))
+						}
 					}
 					writeNewlyUnblocked(w, change.NewlyUnblocked)
 				})

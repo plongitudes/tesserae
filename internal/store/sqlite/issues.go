@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -142,15 +143,16 @@ func InsertIssue(ctx context.Context, tx *sql.Tx, n NewIssue) error {
 		}
 	}
 	if n.Parent != "" {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO links (from_id, type, to_id) VALUES (?, 'parent', ?)`, n.Parent, n.ID); err != nil {
-			return fmt.Errorf("link issue %s to its parent: %w", n.ID, err)
+		if err := InsertLinkUnlogged(ctx, tx, Link{From: n.Parent, Type: LinkParent, To: n.ID}); err != nil {
+			return err
 		}
 	}
-	for _, blocker := range n.BlockedBy {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO links (from_id, type, to_id) VALUES (?, 'blocks', ?)`, blocker, n.ID); err != nil {
-			return fmt.Errorf("link issue %s to its blocker: %w", n.ID, err)
+	for i, blocker := range n.BlockedBy {
+		if slices.Contains(n.BlockedBy[:i], blocker) {
+			continue
+		}
+		if err := InsertLinkUnlogged(ctx, tx, Link{From: blocker, Type: LinkBlocks, To: n.ID}); err != nil {
+			return err
 		}
 	}
 	return nil

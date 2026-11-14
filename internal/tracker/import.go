@@ -199,7 +199,7 @@ func importIssue(ctx context.Context, tx *sql.Tx, rec bdIssue, now time.Time) er
 		// Where retire keeps its reason: a comment on the retired issue.
 		if strings.TrimSpace(rec.DeleteReason) != "" {
 			comments = append(comments, bdComment{
-				Author: rec.DeletedBy, Text: "Retired: " + rec.DeleteReason, CreatedAt: row.RetiredAt,
+				Author: rec.DeletedBy, Text: retireComment(rec.DeleteReason), CreatedAt: row.RetiredAt,
 			})
 		}
 	}
@@ -245,10 +245,10 @@ func importStatus(rec bdIssue) (status, reason string) {
 	return "held", "imported from bd status " + rec.Status
 }
 
-// importLink writes one of a record's dependencies as a link, under the same
-// rules as Link: one parent, no loops. A link that is already there (the old
-// file can say `related` from both ends, or map two types onto one) is left
-// alone.
+// importLink writes one of a record's dependencies as a link, held to the
+// rules Link holds one to (admitLink): one parent, no loops. A link that is
+// already there (the old file can say `related` from both ends, or map two
+// types onto one) is left alone.
 func importLink(ctx context.Context, tx *sql.Tx, id string, dep bdDependency) error {
 	target := dep.DependsOnID
 	var link Link
@@ -262,46 +262,21 @@ func importLink(ctx context.Context, tx *sql.Tx, id string, dep bdDependency) er
 	default: // related, duplicates, supersedes, and the rest of the old types
 		link = Link{From: id, Type: sqlite.LinkRelated, To: target}
 	}
-	readiness := link.Type == sqlite.LinkBlocks || link.Type == sqlite.LinkParent
-	if target == id {
-		if readiness {
-			return cycleError(link)
-		}
-		return invalid(fmt.Sprintf("%s has a %s link to itself", id, dep.Type), "")
-	}
-	exists, err := sqlite.IssueExists(ctx, tx, target)
-	if err != nil {
+	if exists, err := sqlite.IssueExists(ctx, tx, target); err != nil {
 		return err
-	}
-	if !exists {
+	} else if !exists {
 		return invalid(
 			fmt.Sprintf("%s has a %s link to %q, which is neither in the file nor in the tracker", id, dep.Type, target),
 			"take the dependency out of that record, or import the issue it names first")
 	}
-	if _, ok, err := sqlite.FindLink(ctx, tx, link); err != nil || ok {
+	_, ok, err := admitLink(ctx, tx, link)
+	var refusal *Error
+	if errors.As(err, &refusal) && refusal.Code == CodeHasParent {
+		// The issue is new, so its other parent is also from the file.
+		refusal.Hint = "an issue has one parent; take one parent-child dependency out of that record"
+	}
+	if err != nil || ok {
 		return err
-	}
-	if link.Type == sqlite.LinkParent {
-		parent, has, err := sqlite.ParentOf(ctx, tx, id)
-		if err != nil {
-			return err
-		}
-		if has {
-			return &Error{
-				Code:    CodeHasParent,
-				Message: fmt.Sprintf("%s has two parents in the file, %s and %s", id, parent, target),
-				Hint:    "an issue has one parent; take one parent-child dependency out of that record",
-			}
-		}
-	}
-	if readiness {
-		loop, err := sqlite.ClosesLoop(ctx, tx, link.From, link.To)
-		if err != nil {
-			return err
-		}
-		if loop {
-			return cycleError(link)
-		}
 	}
 	return sqlite.InsertLinkUnlogged(ctx, tx, link)
 }

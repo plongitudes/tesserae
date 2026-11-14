@@ -334,3 +334,65 @@ func TestCommentAddsACommentByTheActor(t *testing.T) {
 	wantError(t, tess(t, "comment", id, "--json"), "invalid_argument")
 	wantError(t, tess(t, "comment", "t-zzzzzzzz", "x", "--json"), "not_found")
 }
+
+// ADR-0013: `show --history` shows the log interleaved with the comments.
+func TestPlainShowWithHistoryInterleavesCommentsWithTheEvents(t *testing.T) {
+	inInitialisedRepo(t)
+	at(t, 1)
+	id := newID(t, "Tracked")
+	at(t, 2)
+	ok[object](t, "status", id, "in-progress")
+	at(t, 3)
+	ok[object](t, "comment", id, "Halfway there\nsecond line")
+	at(t, 4)
+	ok[object](t, "update", id, "-p", "0")
+
+	r := tess(t, "show", id, "--history")
+	_, history, found := strings.Cut(r.stdout, "\nHistory:\n")
+	want := "  2026-01-01T00:00:12Z tester: status ready → in-progress\n" +
+		"  2026-01-01T00:00:13Z tester commented:\n" +
+		"    Halfway there\n" +
+		"    second line\n" +
+		"  2026-01-01T00:00:14Z tester: priority 2 → 0\n"
+	if r.code != 0 || !found || history != want {
+		t.Errorf("exit %d, stderr %q, history:\n%s\nwant:\n%s", r.code, r.stderr, history, want)
+	}
+	if strings.Contains(r.stdout, "Comments:") {
+		t.Errorf("the comments are listed apart from the history:\n%s", r.stdout)
+	}
+	// Without --history the comments have their own section.
+	if r := tess(t, "show", id); !strings.Contains(r.stdout, "\nComments:\n  2026-01-01T00:00:13Z tester:\n    Halfway there\n") {
+		t.Errorf("plain show without --history:\n%s", r.stdout)
+	}
+}
+
+// ADR-0018: when an issue shows as waiting, the output of status says why.
+func TestPlainStatusSaysWhyAnIssueShowsAsWaiting(t *testing.T) {
+	inInitialisedRepo(t)
+	at(t, 1)
+	gate := newID(t, "Gate")
+	at(t, 2)
+	other := newID(t, "Other")
+	at(t, 3)
+	parent := newID(t, "Parent", "-b", gate, "-b", other)
+	at(t, 4)
+	child := newID(t, "Child", "--parent", parent)
+
+	wantPlain(t, tess(t, "status", parent, "ready"),
+		"⊖ "+parent+" Parent",
+		"  shows as waiting: blocked by "+gate+", "+other,
+	)
+	wantPlain(t, tess(t, "status", child, "ready"),
+		"⊖ "+child+" Child",
+		"  shows as waiting: blocked through "+parent,
+	)
+	ok[object](t, "status", gate, other, "done")
+	wantPlain(t, tess(t, "status", parent, "ready"),
+		"⊖ "+parent+" Parent",
+		"  shows as waiting: it has open children",
+	)
+	// A status that is not waiting says nothing more, blocked or not.
+	wantPlain(t, tess(t, "status", child, "ready"), "○ "+child+" Child")
+	ok[object](t, "status", gate, "ready")
+	wantPlain(t, tess(t, "status", parent, "in-progress"), "◐ "+parent+" Parent")
+}

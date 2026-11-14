@@ -154,12 +154,10 @@ func (s *Store) migrate(ctx context.Context) error {
 // the key is set.
 func (s *Store) Config(ctx context.Context, key string) (value string, ok bool, err error) {
 	err = s.Read(ctx, func(tx *sql.Tx) error {
-		return tx.QueryRowContext(ctx, `SELECT value FROM config WHERE key = ?`, key).Scan(&value)
+		value, ok, err = ConfigIn(ctx, tx, key)
+		return err
 	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
-	return value, err == nil, err
+	return value, ok, err
 }
 
 // ConfigIn is Config inside the caller's transaction.
