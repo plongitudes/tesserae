@@ -34,9 +34,9 @@ json stderr .error.code has_parent
 # Reparent: unlink, then link. The ID never changes.
 exec tess unlink $P parent-of $C1 --json
 exec tess link $C1 child-of $Q --json
-json stdout .from $Q
-json stdout .type parent
-json stdout .to $C1
+json stdout .[0].from $Q
+json stdout .[0].type parent
+json stdout .[0].to $C1
 exec tess show $C1 --json
 json stdout .id $C1
 json stdout .parent $Q
@@ -69,6 +69,19 @@ exec tess link $Y blocks $Z --json
 json stderr .error.code cycle
 ! exec tess link $X blocks $X --json
 json stderr .error.code cycle
+
+# blocks between an issue and its own ancestor or descendant is refused both
+# ways: G is a grandchild of Q. The message explains in hierarchy terms.
+! exec tess link $G blocks $Q --json
+json stderr .error.code cycle
+! exec tess link $Q blocks $G --json
+json stderr .error.code cycle
+! exec tess link $G blocks $Q
+stderr 'child'
+exec tess show $G --json
+json stdout .blocked false
+json stdout .links.blocks []
+json stdout .links.blocked_by []
 
 # related and discovered-from never take part in cycle checks.
 exec tess link $Z related $X --json

@@ -48,6 +48,10 @@ json stdout .[*].id '["'$R2'"]'
 exec tess update $TOP -d 'mentions tokens in the body' --json
 exec tess list -s 'tokens' --json
 json stdout .[*].id has $TOP
+# The search matches IDs too.
+slice R2HASH $R2 2
+exec tess list -s $R2HASH --json
+json stdout .[*].id has $R2
 
 # JSON carries the hierarchy flat.
 exec tess list --parent $EPIC --json

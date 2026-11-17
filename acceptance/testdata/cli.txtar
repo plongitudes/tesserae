@@ -3,12 +3,24 @@
 exec git init -q .
 exec tess init --prefix t
 
-# No arguments: a short orientation that names the core commands.
+# No arguments: an orientation that names every working command and no plumbing.
 exec tess
 stdout 'tess ready'
 stdout 'tess create'
+stdout 'tess show'
+stdout 'tess update'
 stdout 'tess status'
+stdout 'tess comment'
+stdout 'tess link'
+stdout 'tess unlink'
+stdout 'tess list'
+stdout 'tess retire'
+stdout 'tess restore'
 stdout 'tess sync'
+! stdout 'tess init'
+! stdout 'tess import'
+! stdout 'tess setup'
+! stdout 'tess hook'
 
 # Every command's --help has examples.
 exec tess create --help
@@ -48,3 +60,20 @@ stderr '^error: '
 json stderr .error.code invalid_argument
 ! exec tess list --frobnicate --json
 json stderr .error.code invalid_argument
+
+# Command-line errors print usage, not a hint; the JSON hint is the use line.
+! exec tess create
+stderr '^error: '
+stderr '^usage: tess create'
+stderr 'tess create --help'
+! stderr '^hint: '
+! exec tess link t-aaa
+stderr '^usage: tess link'
+! exec tess link t-aaa --json
+json stderr .error.code invalid_argument
+stderr '"hint":"tess link'
+
+# Refusals keep their hint.
+! exec tess show t-zzzzzzzz
+stderr '^hint: '
+! stderr '^usage: '

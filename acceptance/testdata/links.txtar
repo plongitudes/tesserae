@@ -5,11 +5,13 @@ exec tess init --prefix t
 capture A -- tess create 'A' --json
 capture B -- tess create 'B' --json
 
-# blocked-by is blocks, reversed; both normalise to the same link.
+# blocked-by is blocks, reversed; both normalise to the same link. The result
+# is always an array, one element per pair.
 exec tess link $B blocked-by $A --json
-json stdout .from $A
-json stdout .type blocks
-json stdout .to $B
+json stdout .|length 1
+json stdout .[0].from $A
+json stdout .[0].type blocks
+json stdout .[0].to $B
 exec tess show $A --json
 json stdout .links.blocks '["'$B'"]'
 exec tess show $B --json
@@ -35,9 +37,9 @@ json stdout .links.related '["'$A'"]'
 # discovered-from is directed.
 capture D -- tess create 'Found while working on A' --json
 exec tess link $D discovered-from $A --json
-json stdout .from $D
-json stdout .type discovered-from
-json stdout .to $A
+json stdout .[0].from $D
+json stdout .[0].type discovered-from
+json stdout .[0].to $A
 exec tess show $D --json
 json stdout .links.discovered_from '["'$A'"]'
 exec tess show $A --json
@@ -59,11 +61,44 @@ exec tess show $E --json
 json stdout .links.blocked_by|length 2
 json stdout .status waiting
 
-# tree shows the neighbourhood.
-exec tess tree $E --json
+# show --tree adds the neighbourhood below the issue.
+exec tess show $E --tree --json
 json stdout .id $E
-json stdout .blocked_by[*].id has $A
-json stdout .blocked_by[*].id has $B
-exec tess tree $E
+json stdout .tree.id $E
+json stdout .tree.blocked_by[*].id has $A
+json stdout .tree.blocked_by[*].id has $B
+exec tess show $E --tree
 stdout $A
 stdout $B
+exec tess show $E --json
+! stdout '"tree"'
+
+# Several IDs on either side: every left × right pair, in one transaction.
+capture F -- tess create 'F' --json
+capture G -- tess create 'G' --json
+capture H -- tess create 'H' --json
+exec tess link $F $G blocks $H $E --json
+json stdout .|length 4
+json stdout .[0].from $F
+json stdout .[0].to $H
+json stdout .[1].from $F
+json stdout .[1].to $E
+json stdout .[2].from $G
+json stdout .[3].to $E
+exec tess show $H --json
+json stdout .links.blocked_by|length 2
+json stdout .links.blocked_by has $F
+json stdout .links.blocked_by has $G
+exec tess link $F $G blocks $H $E
+stdout 'linked '$F' blocks '$H
+stdout 'linked '$G' blocks '$E
+# One refusal in the batch means nothing is linked.
+capture I -- tess create 'I' --json
+! exec tess link $I blocks $F t-zzzzzzzz --json
+json stderr .error.code not_found
+exec tess show $I --json
+json stdout .links.blocks []
+exec tess unlink $F $G blocks $H --json
+json stdout .|length 2
+exec tess show $H --json
+json stdout .links.blocked_by []
