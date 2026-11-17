@@ -263,6 +263,15 @@ func TestImportIsAllOrNothing(t *testing.T) {
 		{"a loop closed through an issue already here", tracker.CodeCycle, []string{
 			bd("bd-ok", deps(dep("bd-old", "blocks"))), bd("bd-old", deps(dep("bd-ok", "blocks"))),
 			bd("bd-z", deps(dep("bd-ok", "blocks"), dep("bd-z", "blocks")))}},
+		{"a parent that blocks its child", tracker.CodeCycle, []string{
+			bd("bd-ok", ``), bd("bd-p", ``), bd("bd-c", deps(dep("bd-p", "parent-child"), dep("bd-p", "blocks")))}},
+		{"a parent that blocks its child, the blocks link first", tracker.CodeCycle, []string{
+			bd("bd-ok", ``), bd("bd-p", ``), bd("bd-c", deps(dep("bd-p", "blocks"), dep("bd-p", "parent-child")))}},
+		{"an issue that blocks its grandchild", tracker.CodeCycle, []string{
+			bd("bd-ok", ``), bd("bd-m", deps(dep("bd-ok", "parent-child"))),
+			bd("bd-g", deps(dep("bd-m", "parent-child"), dep("bd-ok", "blocks")))}},
+		{"a parent already here that blocks its new child", tracker.CodeCycle, []string{
+			bd("bd-ok", ``), bd("bd-c", deps(dep("bd-old", "parent-child"), dep("bd-old", "blocks")))}},
 		{"an issue blocking itself", tracker.CodeCycle, []string{bd("bd-ok", ``), bd("bd-x", deps(dep("bd-x", "blocks")))}},
 		{"two parents", tracker.CodeHasParent, []string{
 			bd("bd-ok", ``), bd("bd-p", ``), bd("bd-c", deps(dep("bd-ok", "parent-child"), dep("bd-p", "parent-child")))}},
@@ -281,6 +290,39 @@ func TestImportIsAllOrNothing(t *testing.T) {
 			wantStrings(t, "issues after a refused import", f.list(tracker.Filter{All: true}), "bd-old")
 			wantStrings(t, "links of the issue already here", f.get("bd-old").Links.Blocks)
 		})
+	}
+}
+
+// Old bd data often has children blocking their epic (ADR-0016); import
+// says why that is refused in the same words link does.
+func TestImportRefusesBlocksWithinAHierarchyInHierarchyTerms(t *testing.T) {
+	epic := bd("bd-epic", deps(dep("bd-child", "blocks")))
+	child := bd("bd-child", deps(dep("bd-epic", "parent-child")))
+	for _, lines := range [][]string{{epic, child}, {child, epic}} {
+		f := newFixture(t)
+		_, err := f.importLines(lines...)
+		// Whichever of the two links comes second is the one refused.
+		wantRefusalSaying(t, err, tracker.CodeCycle,
+			"bd-child", "bd-epic", "a parent's open children already hold it", "dependency loop")
+		wantStrings(t, "issues after a refused import", f.list(tracker.Filter{All: true}))
+	}
+
+	f := newFixture(t)
+	_, err := f.importLines(bd("bd-epic", ``), bd("bd-child", deps(dep("bd-epic", "parent-child"), dep("bd-epic", "blocks"))))
+	wantRefusalSaying(t, err, tracker.CodeCycle,
+		"bd-epic is an ancestor of bd-child", "so bd-child could never start", "dependency loop")
+}
+
+func wantRefusalSaying(t *testing.T, err error, code string, parts ...string) {
+	t.Helper()
+	wantCode(t, err, code)
+	if err == nil {
+		return
+	}
+	for _, part := range parts {
+		if !strings.Contains(err.Error(), part) {
+			t.Errorf("error %q; want it to say %q", err, part)
+		}
 	}
 }
 

@@ -1,7 +1,9 @@
 package tracker_test
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/plongitudes/tesserae/internal/tracker"
@@ -350,7 +352,11 @@ func TestRelatedAndDiscoveredFromTakeNoPartInCycles(t *testing.T) {
 	f.link(a, "related", b)
 	f.link(a, "discovered-from", b)
 	f.link(b, "blocks", a)
-	f.link(b, "parent-of", a)
+
+	c, d := f.titled("C"), f.titled("D")
+	f.link(c, "related", d)
+	f.link(c, "discovered-from", d)
+	f.link(d, "parent-of", c)
 }
 
 func TestALoopThroughARetiredIssueIsRefused(t *testing.T) {
@@ -514,4 +520,148 @@ func TestUnlinkingSeveralIssuesRemovesEveryPairOrNone(t *testing.T) {
 func sorted(ids ...string) []string {
 	slices.Sort(ids)
 	return ids
+}
+
+// cycleRefusal makes a link that must be refused with code `cycle`, and
+// returns the refusal.
+func (f *fixture) cycleRefusal(a, wording, b string) *tracker.Error {
+	f.t.Helper()
+	_, err := f.tr.Link(f.ctx, []string{a}, wording, []string{b})
+	var refusal *tracker.Error
+	if !errors.As(err, &refusal) || refusal.Code != tracker.CodeCycle {
+		f.t.Fatalf("Link(%s %s %s) = %v; want a cycle refusal", a, wording, b, err)
+	}
+	return refusal
+}
+
+func wantMessage(t *testing.T, e *tracker.Error, parts ...string) {
+	t.Helper()
+	for _, part := range parts {
+		if !strings.Contains(e.Message, part) {
+			t.Errorf("message %q; want it to say %q", e.Message, part)
+		}
+	}
+}
+
+// ADR-0016: a parent already waits on its open children, and a blocked
+// ancestor blocks its descendants, so the child could never start.
+func TestAChildBlockingItsParentIsRefusedInHierarchyTerms(t *testing.T) {
+	f := newFixture(t)
+	p, c := f.titled("Parent"), f.titled("Child")
+	f.link(p, "parent-of", c)
+	for _, refusal := range []*tracker.Error{f.cycleRefusal(c, "blocks", p), f.cycleRefusal(p, "blocked-by", c)} {
+		wantMessage(t, refusal, c+" is a child of "+p, "a parent's open children already hold it", "dependency loop")
+	}
+	wantStrings(t, "child blocks", f.get(c).Links.Blocks)
+	f.wantChanges(p)
+}
+
+// ADR-0016: the child waits on the parent, which can't finish while the
+// child is open.
+func TestAParentBlockingItsChildIsRefusedInHierarchyTerms(t *testing.T) {
+	f := newFixture(t)
+	p, c := f.titled("Parent"), f.titled("Child")
+	f.link(p, "parent-of", c)
+	for _, refusal := range []*tracker.Error{f.cycleRefusal(p, "blocks", c), f.cycleRefusal(c, "blocked-by", p)} {
+		wantMessage(t, refusal, p+" is an ancestor of "+c, "so "+c+" could never start", "dependency loop")
+	}
+	if got := f.get(c); got.Blocked || len(got.Links.BlockedBy) != 0 {
+		t.Errorf("child: blocked %v, blocked_by %v; want neither", got.Blocked, got.Links.BlockedBy)
+	}
+	f.wantChanges(c, change{"parent", nil, p})
+}
+
+func TestBlocksBetweenAnIssueAndItsGrandchildIsRefusedBothWays(t *testing.T) {
+	f := newFixture(t)
+	top, mid, leaf := f.titled("Top"), f.titled("Mid"), f.titled("Leaf")
+	f.link(top, "parent-of", mid)
+	f.link(mid, "parent-of", leaf)
+
+	wantMessage(t, f.cycleRefusal(leaf, "blocks", top),
+		leaf+" is a descendant of "+top, "a parent's open children already hold it", "dependency loop")
+	wantMessage(t, f.cycleRefusal(top, "blocks", leaf),
+		top+" is an ancestor of "+leaf, "so "+leaf+" could never start", "dependency loop")
+
+	// Siblings and cousins are not each other's ancestors.
+	other := f.titled("Other child")
+	f.link(top, "parent-of", other)
+	f.link(other, "blocks", mid)
+	f.link(other, "blocks", leaf)
+}
+
+// The hierarchy holds whether or not an issue in it is retired: the links
+// are still there and count again on restore.
+func TestBlocksAcrossARetiredParentIsRefused(t *testing.T) {
+	f := newFixture(t)
+	top, mid, leaf := f.titled("Top"), f.titled("Mid"), f.titled("Leaf")
+	f.link(top, "parent-of", mid)
+	f.link(mid, "parent-of", leaf)
+	f.retire(mid)
+	f.cycleRefusal(top, "blocks", leaf)
+	f.cycleRefusal(leaf, "blocks", top)
+}
+
+// The same rule from the other side: a parent link that would put a blocks
+// link between an ancestor and its descendant.
+func TestAParentLinkOverABlocksLinkIsRefused(t *testing.T) {
+	f := newFixture(t)
+	a, b := f.titled("A"), f.titled("B")
+	f.link(a, "blocks", b)
+	wantMessage(t, f.cycleRefusal(a, "parent-of", b),
+		a+" an ancestor of "+b, "so "+b+" could never start", "dependency loop")
+	wantMessage(t, f.cycleRefusal(b, "parent-of", a),
+		a+" a descendant of "+b, "a parent's open children already hold it", "dependency loop")
+
+	// Further apart: Top blocks Leaf, and Mid, already over Leaf, goes under Top.
+	top, mid, leaf := f.titled("Top"), f.titled("Mid"), f.titled("Leaf")
+	f.link(mid, "parent-of", leaf)
+	f.link(top, "blocks", leaf)
+	wantMessage(t, f.cycleRefusal(top, "parent-of", mid), top+" an ancestor of "+leaf)
+	if got := f.get(mid).Parent; got != nil {
+		t.Errorf("mid parent = %s; want none", *got)
+	}
+}
+
+func TestACycleHintPointsAtShowTree(t *testing.T) {
+	f := newFixture(t)
+	x, y := f.titled("X"), f.titled("Y")
+	f.link(x, "blocks", y)
+	refusal := f.cycleRefusal(y, "blocks", x)
+	if want := "tess show " + y + " --tree"; !strings.Contains(refusal.Hint, want) {
+		t.Errorf("hint %q; want it to name `%s`", refusal.Hint, want)
+	}
+
+	p, c := f.titled("P"), f.titled("C")
+	f.link(p, "parent-of", c)
+	for _, refusal := range []*tracker.Error{f.cycleRefusal(c, "blocks", p), f.cycleRefusal(p, "blocks", c)} {
+		if strings.Contains(refusal.Hint, "tess tree") || !strings.Contains(refusal.Hint, "--tree") {
+			t.Errorf("hint %q; want it to name `tess show ID --tree`", refusal.Hint)
+		}
+	}
+}
+
+// Create makes the same links, so it is held to the same rule: a new issue
+// can't be blocked by the parent it is created under, or by one above that.
+func TestCreateRefusesABlockerThatIsAnAncestor(t *testing.T) {
+	f := newFixture(t)
+	top, mid, other := f.titled("Top"), f.titled("Mid"), f.titled("Other")
+	f.link(top, "parent-of", mid)
+	for _, blocker := range []string{mid, top} {
+		_, err := f.tr.Create(f.ctx, tracker.NewIssue{Title: "Leaf", Parent: mid, BlockedBy: []string{other, blocker}})
+		var refusal *tracker.Error
+		if !errors.As(err, &refusal) || refusal.Code != tracker.CodeCycle {
+			t.Fatalf("Create under %s blocked by %s = %v; want a cycle refusal", mid, blocker, err)
+		}
+		wantMessage(t, refusal, blocker+" is an ancestor of the new issue", "could never start", "dependency loop")
+	}
+	if got := f.list(tracker.Filter{}); len(got) != 3 {
+		t.Errorf("issues after the refused creates = %v; want the three made before", got)
+	}
+
+	// A blocker elsewhere is fine, as is a sibling.
+	sibling := f.create(tracker.NewIssue{Title: "Sibling", Parent: mid}).ID
+	leaf := f.create(tracker.NewIssue{Title: "Leaf", Parent: mid, BlockedBy: []string{other, sibling}})
+	if leaf.Parent == nil || *leaf.Parent != mid {
+		t.Errorf("leaf parent = %v; want %s", leaf.Parent, mid)
+	}
 }

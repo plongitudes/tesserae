@@ -9,14 +9,17 @@ import (
 func TestLinkPrintsTheLinkInItsCanonicalDirectionForEveryWording(t *testing.T) {
 	inInitialisedRepo(t)
 	a, b := newID(t, "A"), newID(t, "B")
+	// A blocks link and a parent link can't join the same two issues
+	// (ADR-0016), so the parent wordings have a pair of their own.
+	p, c := newID(t, "P"), newID(t, "C")
 	for _, tc := range []struct {
 		args []string
 		want object
 	}{
 		{[]string{a, "blocks", b}, object{"from": a, "type": "blocks", "to": b}},
 		{[]string{b, "blocked-by", a}, object{"from": a, "type": "blocks", "to": b}},
-		{[]string{a, "parent-of", b}, object{"from": a, "type": "parent", "to": b}},
-		{[]string{b, "child-of", a}, object{"from": a, "type": "parent", "to": b}},
+		{[]string{p, "parent-of", c}, object{"from": p, "type": "parent", "to": c}},
+		{[]string{c, "child-of", p}, object{"from": p, "type": "parent", "to": c}},
 		{[]string{a, "related", b}, object{"from": a, "type": "related", "to": b}},
 		{[]string{b, "discovered-from", a}, object{"from": b, "type": "discovered-from", "to": a}},
 	} {
@@ -32,6 +35,9 @@ func TestLinkPrintsTheLinkInItsCanonicalDirectionForEveryWording(t *testing.T) {
 		if !reflect.DeepEqual(links[key], want) {
 			t.Errorf("links.%s is %v, want %v", key, links[key], want)
 		}
+	}
+	if parent := ok[object](t, "show", c)["parent"]; parent != p {
+		t.Errorf("parent is %v, want %s", parent, p)
 	}
 }
 

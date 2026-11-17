@@ -215,6 +215,20 @@ func (t *tracker) Create(ctx context.Context, n NewIssue) (Issue, error) {
 			if err != nil {
 				return err
 			}
+			// The links a new issue arrives with are held to the rule for
+			// a blocks link inside a hierarchy too (ADR-0016). Nothing else
+			// can go wrong: a new issue closes no loop.
+			if row.Parent != "" {
+				above, err := isOrIsUnder(ctx, tx, row.Parent, blocker)
+				if err != nil {
+					return err
+				}
+				if above {
+					return hierarchyError(blocker, fmt.Sprintf(
+						"%s is an ancestor of the new issue, a child of %s, so the new issue could never start; %s blocking it would make a dependency loop",
+						blocker, row.Parent, blocker))
+				}
+			}
 			row.BlockedBy = append(row.BlockedBy, blocker)
 		}
 

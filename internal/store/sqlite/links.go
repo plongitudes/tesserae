@@ -110,6 +110,65 @@ func ClosesLoop(ctx context.Context, tx *sql.Tx, from, to string) (bool, error) 
 	return loop, nil
 }
 
+// AncestorDepth returns how many parent links lie between an issue and one
+// above it: 1 for its parent, 2 for its grandparent; 0 when the one is not
+// an ancestor of the other. It walks the parent links of readiness_links, so
+// a retired issue in between counts, as it does for ClosesLoop: its links
+// are still there and hold again on restore.
+func AncestorDepth(ctx context.Context, tx *sql.Tx, ancestor, id string) (int, error) {
+	var depth int
+	// The depth guard only keeps a damaged database from recursing forever.
+	err := tx.QueryRowContext(ctx,
+		`WITH RECURSIVE up (id, depth) AS (
+		     SELECT ?2, 0
+		     UNION
+		     SELECT l.from_id, up.depth + 1
+		     FROM up JOIN readiness_links l ON l.type = 'parent' AND l.to_id = up.id
+		     WHERE up.depth < 100
+		 )
+		 SELECT coalesce(min(depth), 0) FROM up WHERE id = ?1 AND depth > 0`, ancestor, id).Scan(&depth)
+	if err != nil {
+		return 0, fmt.Errorf("check whether %s is an ancestor of %s: %w", ancestor, id, err)
+	}
+	return depth, nil
+}
+
+// BlocksLinkInLine finds a blocks link that a parent link from parent to
+// child would put between an issue and its own ancestor: one that joins
+// parent or an issue above it with child or an issue below it, either way
+// round. ok is false when there is none. Like AncestorDepth, it counts
+// retired issues.
+func BlocksLinkInLine(ctx context.Context, tx *sql.Tx, parent, child string) (blocks Link, ok bool, err error) {
+	// UNION keeps each issue once, so the walks end even on a damaged
+	// database that already holds a loop.
+	err = tx.QueryRowContext(ctx,
+		`WITH RECURSIVE
+		 up (id) AS (
+		     SELECT ?1
+		     UNION
+		     SELECT l.from_id FROM up JOIN readiness_links l ON l.type = 'parent' AND l.to_id = up.id
+		 ),
+		 down (id) AS (
+		     SELECT ?2
+		     UNION
+		     SELECT l.to_id FROM down JOIN readiness_links l ON l.type = 'parent' AND l.from_id = down.id
+		 )
+		 SELECT l.from_id, l.type, l.to_id
+		 FROM readiness_links l
+		 WHERE l.type = 'blocks'
+		   AND ((l.from_id IN (SELECT id FROM up) AND l.to_id IN (SELECT id FROM down))
+		     OR (l.from_id IN (SELECT id FROM down) AND l.to_id IN (SELECT id FROM up)))
+		 ORDER BY l.from_id, l.to_id
+		 LIMIT 1`, parent, child).Scan(&blocks.From, &blocks.Type, &blocks.To)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Link{}, false, nil
+	}
+	if err != nil {
+		return Link{}, false, fmt.Errorf("look for a blocks link between %s and %s: %w", parent, child, err)
+	}
+	return blocks, true, nil
+}
+
 // InsertLink adds a link, given in its canonical direction, and logs it as
 // one event (absent → the other end's ID) on the issue that owns it, whose
 // updated_at moves to at. The caller has checked that the link is new and

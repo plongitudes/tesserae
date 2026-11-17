@@ -121,7 +121,8 @@ func (t *tracker) eachPair(ctx context.Context, left []string, wording string, r
 // (Link, Import). A link that is already there, a related one either way
 // round, is returned as it is stored, and there is nothing to add. Otherwise
 // it is refused when it links an issue to itself, gives an issue a second
-// parent (has_parent), or closes a loop of blocks and parent links (cycle).
+// parent (has_parent), leaves a blocks link between an issue and its own
+// ancestor, or closes a loop of blocks and parent links (both cycle).
 func admitLink(ctx context.Context, tx *sql.Tx, link Link) (existing Link, ok bool, err error) {
 	if link.From == link.To {
 		if link.AffectsReadiness() {
@@ -148,6 +149,9 @@ func admitLink(ctx context.Context, tx *sql.Tx, link Link) (existing Link, ok bo
 		}
 	}
 	if link.AffectsReadiness() {
+		if err := checkHierarchy(ctx, tx, link); err != nil {
+			return Link{}, false, err
+		}
 		loop, err := sqlite.ClosesLoop(ctx, tx, link.From, link.To)
 		if err != nil {
 			return Link{}, false, err
@@ -188,8 +192,78 @@ func (t *tracker) Unlink(ctx context.Context, left []string, wording string, rig
 	})
 }
 
+// checkHierarchy refuses a link that would leave a blocks link between an
+// issue and its own ancestor (ADR-0016): the blocks link itself, or the
+// parent link that puts the two ends of one in the same line. Either way
+// round it is a deadlock, though only one way is a loop in the links.
+func checkHierarchy(ctx context.Context, tx *sql.Tx, link Link) error {
+	if link.Type == sqlite.LinkBlocks {
+		// The blocker is below the issue it would block.
+		depth, err := sqlite.AncestorDepth(ctx, tx, link.To, link.From)
+		if err != nil {
+			return err
+		}
+		if depth > 0 {
+			kin := "a child"
+			if depth > 1 {
+				kin = "a descendant"
+			}
+			return hierarchyError(link.To, fmt.Sprintf(
+				"%s is %s of %s, and a parent's open children already hold it; %s blocking %s would make a dependency loop",
+				link.From, kin, link.To, link.From, link.To))
+		}
+		// The blocker is above it.
+		if depth, err = sqlite.AncestorDepth(ctx, tx, link.From, link.To); err != nil {
+			return err
+		}
+		if depth > 0 {
+			return hierarchyError(link.From, fmt.Sprintf(
+				"%s is an ancestor of %s, so %s could never start; %s blocking %s would make a dependency loop",
+				link.From, link.To, link.To, link.From, link.To))
+		}
+		return nil
+	}
+
+	// A parent link. One that would put an issue under its own descendant is
+	// a loop of parent links, and is refused as one.
+	if depth, err := sqlite.AncestorDepth(ctx, tx, link.To, link.From); err != nil || depth > 0 {
+		return err
+	}
+	blocks, ok, err := sqlite.BlocksLinkInLine(ctx, tx, link.From, link.To)
+	if err != nil || !ok {
+		return err
+	}
+	// The blocker is the new child or below it, or the new parent or above.
+	below, err := isOrIsUnder(ctx, tx, blocks.From, link.To)
+	if err != nil {
+		return err
+	}
+	if below {
+		return hierarchyError(link.From, fmt.Sprintf(
+			"%s as the parent of %s would make %s a descendant of %s, which it blocks, and a parent's open children already hold it; that would make a dependency loop",
+			link.From, link.To, blocks.From, blocks.To))
+	}
+	return hierarchyError(link.From, fmt.Sprintf(
+		"%s as the parent of %s would make %s an ancestor of %s, which it blocks, so %s could never start; that would make a dependency loop",
+		link.From, link.To, blocks.From, blocks.To, blocks.To))
+}
+
+func isOrIsUnder(ctx context.Context, tx *sql.Tx, id, top string) (bool, error) {
+	if id == top {
+		return true, nil
+	}
+	depth, err := sqlite.AncestorDepth(ctx, tx, top, id)
+	return depth > 0, err
+}
+
+// hierarchyError is a cycle refusal that points at the tree under top, the
+// upper issue of the two.
+func hierarchyError(top, message string) error {
+	return &Error{Code: CodeCycle, Message: message, Hint: fmt.Sprintf("tess show %s --tree shows what is under it", top)}
+}
+
 func cycleError(l Link) error {
-	e := &Error{Code: CodeCycle, Hint: fmt.Sprintf("tess tree %s shows what it depends on", l.From)}
+	e := &Error{Code: CodeCycle, Hint: fmt.Sprintf("tess show %s --tree shows what it depends on", l.From)}
 	switch {
 	case l.From == l.To && l.Type == sqlite.LinkBlocks:
 		e.Message = fmt.Sprintf("%s can't block itself", l.From)
