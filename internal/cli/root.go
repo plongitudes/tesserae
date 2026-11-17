@@ -6,15 +6,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// orientation is what `tess` prints with no arguments (ADR-0019, item 1).
+// orientation is what `tess` prints with no arguments (ADR-0019, item 1):
+// one line per working command. The commands run once per repository or by
+// a hook (init, import, setup, hook) are left to `tess --help`.
 const orientation = `tess tracks this repository's issues. One database serves every worktree.
 
   tess ready                    issues that can be worked on now, by priority
   tess create "Title" -p 1      add an issue; prints its ID
-  tess show ID                  one issue in full, with its links and comments
-  tess status ID in-progress    ready | in-progress | pending-review | held | done | omit
-  tess link A blocks B          B waits until A is done or omitted
-  tess list --status waiting    every other view: filters, --all, --retired
+  tess show ID                  one issue in full; --tree, --history, --field F
+  tess update ID --notes "..."  change fields; --append adds to a text
+  tess status ID in-progress    or ready, pending-review, held, done, omit
+  tess comment ID "Text"        add a comment
+  tess link A blocks B          B waits for A; also parent-of, related
+  tess unlink A blocks B        remove a link
+  tess list --status waiting    every other view: filters, -s, --all, --retired
+  tess retire ID                take a mistaken issue out of every view
+  tess restore ID               bring a retired issue back
   tess sync                     share issues with other machines
 
 Add --json to any command for stable JSON; errors carry a code and a hint.

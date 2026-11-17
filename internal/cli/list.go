@@ -33,7 +33,8 @@ func (a *app) readyCommand() *cobra.Command {
 
 An issue is listed when its status is ready, nothing blocks it, and it has no
 open children. The order is priority, then age. On a terminal each issue is
-shown under its ancestors; elsewhere the output is one line per issue.`,
+shown under its ancestors; elsewhere the output is one line per issue. When
+nothing is ready, a terminal gets a note on stderr and a pipeline gets nothing.`,
 		Example: `  tess ready
   tess ready -n 3
   tess ready -n 0                # all of them
@@ -106,6 +107,10 @@ func (a *app) list(ctx context.Context, filter tracker.Filter, l layout) error {
 		if a.json {
 			return writeJSON(a.stdout, issues)
 		}
+		if filter.Ready && len(issues) == 0 {
+			a.noReadyIssues()
+			return nil
+		}
 		p := painter{colour: a.tty && os.Getenv("NO_COLOR") == ""}
 		if filter.Blocked {
 			if p.blockers, err = tr.ActiveBlockers(ctx); err != nil {
@@ -125,6 +130,16 @@ func (a *app) list(ctx context.Context, filter tracker.Filter, l layout) error {
 		}
 		return nil
 	})
+}
+
+// noReadyIssues tells a person at a terminal that `ready` found nothing and
+// where to look next. It goes to stderr, and a pipeline gets nothing at all.
+func (a *app) noReadyIssues() {
+	if !a.tty {
+		return
+	}
+	fmt.Fprintln(a.stderr, "no ready issues")
+	fmt.Fprintln(a.stderr, "hint: tess list shows every open issue; tess list --blocked shows what blocks them")
 }
 
 // listNode is an issue in a hierarchical list: a result, or an ancestor of

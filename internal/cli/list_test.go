@@ -325,3 +325,37 @@ func TestAParentListedAfterItsChildStillSortsByTheChild(t *testing.T) {
 		"○ "+alone+" Alone",
 	)
 }
+
+func TestReadyWithNothingReadySaysSoOnATerminalAndIsSilentWhenPiped(t *testing.T) {
+	inInitialisedRepo(t)
+	held := newID(t, "Held")
+	ok[object](t, "status", held, "held", "-r", "later")
+
+	r := onTTY(t, "ready")
+	if r.code != 0 || r.stdout != "" {
+		t.Errorf("on a terminal: exit %d, stdout %q, want 0 and nothing", r.code, r.stdout)
+	}
+	lines := strings.Split(strings.TrimSuffix(r.stderr, "\n"), "\n")
+	if len(lines) != 2 || lines[0] != "no ready issues" || !strings.HasPrefix(lines[1], "hint: ") || !strings.Contains(lines[1], "tess list") {
+		t.Errorf("on a terminal stderr is %q, want `no ready issues` and one hint line naming tess list", r.stderr)
+	}
+
+	if r := tess(t, "ready"); r.code != 0 || r.stdout != "" || r.stderr != "" {
+		t.Errorf("piped: exit %d, stdout %q, stderr %q, want 0 and nothing", r.code, r.stdout, r.stderr)
+	}
+	// JSON is the result alone, terminal or not.
+	if r := onTTY(t, "ready", "--json"); strings.TrimSpace(r.stdout) != "[]" || r.stderr != "" {
+		t.Errorf("--json on a terminal: stdout %q, stderr %q, want [] and nothing", r.stdout, r.stderr)
+	}
+	// Only ready speaks up: an empty list of anything else is just empty.
+	if r := onTTY(t, "list", "--status", "done"); r.stdout != "" || r.stderr != "" {
+		t.Errorf("empty list on a terminal: stdout %q, stderr %q, want nothing", r.stdout, r.stderr)
+	}
+}
+
+func TestReadyWithResultsSaysNothingOnStderr(t *testing.T) {
+	newProject(t)
+	if r := onTTY(t, "ready"); r.code != 0 || r.stderr != "" || r.stdout == "" {
+		t.Errorf("exit %d, stderr %q, stdout %q", r.code, r.stderr, r.stdout)
+	}
+}

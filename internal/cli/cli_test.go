@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -116,19 +118,58 @@ func wantError(t *testing.T, r result, code string) map[string]any {
 	return e
 }
 
-func TestNoArgumentsPrintsAShortOrientationNamingTheCoreCommands(t *testing.T) {
+// plumbing are the commands the orientation leaves out: run once, or run by
+// something other than a person at work on issues.
+var plumbing = []string{"init", "import", "setup", "hook"}
+
+func TestNoArgumentsPrintsOneLinePerWorkingCommandAndNoPlumbing(t *testing.T) {
 	inDir(t, isolate(t), "anywhere") // not a git repository: orientation needs none
 	r := tess(t)
 	if r.code != 0 || r.stderr != "" {
 		t.Fatalf("exit %d, stderr %q", r.code, r.stderr)
 	}
-	for _, want := range []string{"tess ready", "tess create", "tess status", "tess sync", "--json", "--help"} {
+	lines := strings.Split(r.stdout, "\n")
+	for _, name := range []string{"ready", "create", "show", "update", "status", "comment", "link", "unlink", "list", "retire", "restore", "sync"} {
+		n := 0
+		for _, line := range lines {
+			if strings.HasPrefix(line, "  tess "+name+" ") {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("orientation has %d lines for tess %s, want 1:\n%s", n, name, r.stdout)
+		}
+	}
+	for _, name := range plumbing {
+		if strings.Contains(r.stdout, "tess "+name) {
+			t.Errorf("orientation names tess %s:\n%s", name, r.stdout)
+		}
+	}
+	for _, want := range []string{"--json", "--help"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("orientation doesn't name %q:\n%s", want, r.stdout)
 		}
 	}
-	if n := strings.Count(r.stdout, "\n"); n < 6 || n > 14 {
-		t.Errorf("orientation is %d lines, want about 10:\n%s", n, r.stdout)
+	for _, line := range lines {
+		if len([]rune(line)) > 80 {
+			t.Errorf("orientation line is wider than 80 columns: %q", line)
+		}
+	}
+	if n := strings.Count(r.stdout, "\n"); n > 18 {
+		t.Errorf("orientation is %d lines, want one per working command and little else:\n%s", n, r.stdout)
+	}
+}
+
+// A command added later has to be given a line or be called plumbing.
+func TestEveryCommandIsInTheOrientationOrIsPlumbing(t *testing.T) {
+	inDir(t, isolate(t), "anywhere")
+	out := tess(t).stdout
+	a := &app{stdin: strings.NewReader(""), stdout: io.Discard, stderr: io.Discard}
+	for _, cmd := range a.rootCommand().Commands() {
+		named := strings.Contains(out, "\n  tess "+cmd.Name()+" ")
+		if named == slices.Contains(plumbing, cmd.Name()) {
+			t.Errorf("tess %s: in the orientation %v, listed as plumbing %v; want exactly one", cmd.Name(), named, named)
+		}
 	}
 }
 
