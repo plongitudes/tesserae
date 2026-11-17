@@ -83,7 +83,7 @@ under its ancestors; elsewhere the output is one line per issue.`,
 	flags.StringVar(&filter.Assignee, "assignee", "", "only issues assigned to this person")
 	flags.StringVar(&filter.Parent, "parent", "", "only descendants of this issue")
 	flags.BoolVar(&filter.Blocked, "blocked", false, "only blocked issues, of any status, with their blockers")
-	flags.StringVarP(&filter.Search, "search", "s", "", "only issues whose title, description, or notes contain this text")
+	flags.StringVarP(&filter.Search, "search", "s", "", "only issues whose id, title, description, or notes contain this text")
 	flags.BoolVar(&filter.All, "all", false, "include done and omit issues")
 	flags.BoolVar(&filter.Retired, "retired", false, "only retired issues")
 	flags.IntVarP(&filter.Limit, "limit", "n", 0, "show at most this many issues; 0 for all")

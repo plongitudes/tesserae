@@ -22,7 +22,7 @@ type Filter struct {
 	Label    string
 	Assignee string
 	Parent   string // an ID, partial or whole: its descendants at any depth
-	Search   string // case-insensitive substring of title, description, or notes
+	Search   string // case-insensitive substring of id, title, description, or notes
 	Ready    bool   // only issues that display as ready (`tess ready`)
 	Blocked  bool   // only blocked issues
 	All      bool   // include done and omit issues

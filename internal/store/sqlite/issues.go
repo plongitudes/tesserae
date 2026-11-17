@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -381,7 +382,11 @@ func InsertComment(ctx context.Context, tx *sql.Tx, issueID, author, text string
 // RetiredAt are here so that every field change goes through the one diff;
 // the rules about which status changes are allowed, and about retiring and
 // restoring, belong to the tracker.
+//
+// With Append, each text field given adds a paragraph to the field instead
+// of replacing it (see appendParagraph); the other fields are unaffected.
 type Patch struct {
+	Append             bool
 	Title              *string
 	Type               *string
 	Priority           *int
@@ -446,6 +451,14 @@ func UpdateIssue(ctx context.Context, tx *sql.Tx, id string, p Patch, at time.Ti
 	text := func(attr, oldHash string, body *string) error {
 		if body == nil {
 			return nil
+		}
+		if p.Append {
+			var old string
+			if err := tx.QueryRowContext(ctx, `SELECT body FROM texts WHERE hash = ?`, oldHash).Scan(&old); err != nil {
+				return fmt.Errorf("read %s of %s: %w", attr, id, err)
+			}
+			joined := appendParagraph(old, *body)
+			body = &joined
 		}
 		hash, err := putText(ctx, tx, *body)
 		if err != nil || hash == oldHash {
@@ -533,6 +546,21 @@ func UpdateIssue(ctx context.Context, tx *sql.Tx, id string, p Patch, at time.Ti
 		}
 	}
 	return nil
+}
+
+// appendParagraph is old with add after it as a new paragraph: old with its
+// trailing newlines cut to one, a blank line, then add verbatim. An old text
+// that is empty (or only newlines) gives add alone, and an empty add leaves
+// old as it is.
+func appendParagraph(old, add string) string {
+	if add == "" {
+		return old
+	}
+	kept := strings.TrimRight(old, "\n")
+	if kept == "" {
+		return add
+	}
+	return kept + "\n\n" + add
 }
 
 // putText stores body in the write-once texts table and returns its hash.

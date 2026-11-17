@@ -3,6 +3,7 @@ package tracker_test
 import (
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,6 +236,19 @@ func TestListSearchesTitleDescriptionAndNotes(t *testing.T) {
 	// Design and acceptance criteria aren't searched.
 	b.update(b.typo, tracker.Patch{Design: ptr("uses kerberos")})
 	wantStrings(t, "design", b.list(tracker.Filter{Search: "kerberos"}))
+}
+
+func TestListSearchMatchesIDs(t *testing.T) {
+	b := newBoard(t)
+	hash := b.rotate[strings.Index(b.rotate, "-")+1:]
+	wantStrings(t, "whole ID", b.list(tracker.Filter{Search: b.rotate}), b.rotate)
+	wantStrings(t, "whole ID, other case", b.list(tracker.Filter{Search: strings.ToUpper(b.rotate)}), b.rotate)
+	if got := b.list(tracker.Filter{Search: hash}); !slices.Contains(got, b.rotate) {
+		t.Errorf("search for %q = %v; want it to hold %s", hash, got, b.rotate)
+	}
+	// The other filters still apply: a retired issue is found only with Retired.
+	wantStrings(t, "retired, by ID", b.list(tracker.Filter{Search: b.gone}))
+	wantStrings(t, "retired, asked for", b.list(tracker.Filter{Search: b.gone, Retired: true}), b.gone)
 }
 
 func TestListLimitCountsFromTheTop(t *testing.T) {

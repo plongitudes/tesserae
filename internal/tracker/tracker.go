@@ -94,7 +94,12 @@ type NewIssue struct {
 // Patch is a typed change to any field but status: nil fields are left
 // alone. For Assignee and Owner an empty string clears the value, and a zero
 // DueAt clears the due date. The text fields are taken verbatim.
+//
+// With Append, each text field given is added to the field as a new
+// paragraph instead of replacing it: the old text, one blank line, then the
+// new text. Append needs at least one text field and can't come with a Title.
 type Patch struct {
+	Append             bool
 	Title              *string
 	Type               *string
 	Priority           *int
@@ -297,6 +302,16 @@ func (t *tracker) Update(ctx context.Context, partialID string, p Patch) (Issue,
 		checks = append(checks, checkPriority(*p.Priority))
 	}
 	checks = append(checks, checkLabels(p.AddLabels), checkLabels(p.RemoveLabels))
+	if p.Append {
+		switch {
+		case p.Title != nil:
+			checks = append(checks, invalid("--append adds to a text, and a title is not one",
+				"it applies to the description, design, acceptance criteria, and notes; change the title without it"))
+		case p.Description == nil && p.Design == nil && p.AcceptanceCriteria == nil && p.Notes == nil:
+			checks = append(checks, invalid("--append was given no text to add",
+				"give the text with -d, --design, --acceptance, or --notes"))
+		}
+	}
 	if err := errors.Join(checks...); err != nil {
 		return Issue{}, firstError(err)
 	}
@@ -308,7 +323,8 @@ func (t *tracker) Update(ctx context.Context, partialID string, p Patch) (Issue,
 			return err
 		}
 		change := sqlite.Patch{
-			Title: p.Title, Type: p.Type, Priority: p.Priority,
+			Append: p.Append,
+			Title:  p.Title, Type: p.Type, Priority: p.Priority,
 			Description: p.Description, Design: p.Design,
 			AcceptanceCriteria: p.AcceptanceCriteria, Notes: p.Notes,
 			Assignee: p.Assignee, Owner: p.Owner, DueAt: p.DueAt,

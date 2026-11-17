@@ -255,13 +255,19 @@ func (a *app) updateCommand() *cobra.Command {
 
 Only the flags given are changed. An empty value clears a field that can be
 empty. The long texts take "-" to read stdin, as in create. The status is
-changed with tess status, and links with tess link.`,
+changed with tess status, and links with tess link.
+
+--append makes -d, --design, --acceptance and --notes add to the field
+instead of replacing it: the old text, one blank line, then the new text as
+given. It needs at least one of them, and does not apply to --title.`,
 		Example: `  tess update api-7kq --title "Fix the login redirect loop"
   tess update api-7kq -p 0 -a sam
   tess update api-7kq --add-label auth --remove-label urgent
   tess update api-7kq --due 2026-03-01
   tess update api-7kq --due "" -a ""         # clear the due date and the assignee
-  git diff --stat | tess update api-7kq --notes -`,
+  git diff --stat | tess update api-7kq --notes -
+  tess update api-7kq --notes "Retried with a longer timeout; same failure" --append
+  cat more.md | tess update api-7kq --design - --append`,
 		Args: cobra.ExactArgs(1),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			fields := 0
@@ -323,6 +329,7 @@ changed with tess status, and links with tess link.`,
 	flags.StringVarP(&issueType, "type", "t", "", "task, bug, feature, epic, or chore")
 	flags.IntVarP(&priority, "priority", "p", 2, "0 (most urgent) to 4")
 	texts.register(cmd)
+	flags.BoolVar(&patch.Append, "append", false, "the text flags add a paragraph to the field instead of replacing it")
 	flags.StringVarP(&assignee, "assignee", "a", "", `who is working on it; "" for no one`)
 	flags.StringVar(&owner, "owner", "", `who answers for it; "" for no one`)
 	flags.StringVar(&due, "due", "", `when it is due: YYYY-MM-DD or RFC 3339; "" for no date`)

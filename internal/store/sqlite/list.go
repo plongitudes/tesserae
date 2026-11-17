@@ -15,7 +15,7 @@ type ListFilter struct {
 	Label    string
 	Assignee string
 	Parent   string // an exact ID: its descendants at any depth
-	Search   string // substring of the title, description, or notes; ASCII case is ignored
+	Search   string // substring of the id, title, description, or notes; ASCII case is ignored
 	Ready    bool   // displays as ready: not started, not blocked, no open children
 	Blocked  bool   // in blocked_issues
 	All      bool   // done and omit issues too
@@ -66,8 +66,9 @@ func ListIssues(ctx context.Context, tx *sql.Tx, f ListFilter) ([]Issue, error) 
 		add(`i.id IN (SELECT id FROM issue_ancestors WHERE ancestor_id = ?)`, f.Parent)
 	}
 	if f.Search != "" {
-		add(`(instr(lower(i.title), lower(?)) > 0 OR instr(lower(d.body), lower(?)) > 0
-		      OR instr(lower(n.body), lower(?)) > 0)`, f.Search, f.Search, f.Search)
+		add(`(instr(lower(i.id), lower(?)) > 0 OR instr(lower(i.title), lower(?)) > 0
+		      OR instr(lower(d.body), lower(?)) > 0 OR instr(lower(n.body), lower(?)) > 0)`,
+			f.Search, f.Search, f.Search, f.Search)
 	}
 
 	tail := `WHERE ` + strings.Join(where, ` AND `) + ` ORDER BY i.priority, i.created_at, i.id`

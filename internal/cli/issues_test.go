@@ -190,6 +190,35 @@ func TestUpdateReadsATextFromStdin(t *testing.T) {
 	}
 }
 
+func TestUpdateAppendAddsAParagraph(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "Noted")
+	notes := func(r result) any {
+		t.Helper()
+		if r.code != 0 {
+			t.Fatalf("exit %d: %s", r.code, r.stderr)
+		}
+		return decode[object](t, r.stdout)["notes"]
+	}
+	if got := notes(tessIn(t, "Line\n", "update", id, "--notes", "-", "--append", "--json")); got != "Line\n" {
+		t.Errorf("appending to an empty field gave %q", got)
+	}
+	if got := notes(tess(t, "update", id, "--notes", "Second", "--append", "--json")); got != "Line\n\nSecond" {
+		t.Errorf("appending a paragraph gave %q", got)
+	}
+	if got := notes(tessIn(t, "Line\n", "update", id, "--append", "--notes", "-", "-p", "1", "--json")); got != "Line\n\nSecond\n\nLine\n" {
+		t.Errorf("appending from stdin gave %q", got)
+	}
+	// Without --append the text is replaced, as before.
+	if got := notes(tess(t, "update", id, "--notes", "Only", "--json")); got != "Only" {
+		t.Errorf("replacing gave %q", got)
+	}
+	wantError(t, tess(t, "update", id, "--append", "--json"), "invalid_argument")
+	wantError(t, tess(t, "update", id, "--append", "-p", "1", "--json"), "invalid_argument")
+	wantError(t, tess(t, "update", id, "--append", "--title", "More", "--json"), "invalid_argument")
+	wantError(t, tess(t, "update", id, "--append", "--title", "More", "--notes", "x", "--json"), "invalid_argument")
+}
+
 func TestUpdateRefusals(t *testing.T) {
 	inInitialisedRepo(t)
 	id := newID(t, "Issue")
