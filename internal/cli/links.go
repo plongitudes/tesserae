@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -10,21 +11,35 @@ import (
 	"github.com/plongitudes/tesserae/internal/tracker"
 )
 
-// linkArgs checks that a link command was given `A TYPE B`.
-func linkArgs(name string) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) != 3 {
-			return invalidArgument(
-				name+" takes an issue, a link type, and an issue",
-				"as in `tess "+name+" A blocks B`; link types: "+strings.Join(tracker.LinkWordings, ", "))
+// splitLinkArgs splits `A... TYPE B...` at the link type: the issues before
+// it, the type, and the issues after it.
+func splitLinkArgs(name string, args []string) (left []string, wording string, right []string, err error) {
+	hint := "as in `tess " + name + " A blocks B`; link types: " + strings.Join(tracker.LinkWordings, ", ")
+	at := -1
+	for i, arg := range args {
+		if !tracker.IsLinkWording(arg) {
+			continue
 		}
-		return nil
+		if at >= 0 {
+			return nil, "", nil, invalidArgument(
+				fmt.Sprintf("%s takes one link type, and got both %s and %s", name, args[at], arg), hint)
+		}
+		at = i
 	}
+	switch {
+	case at < 0 && len(args) == 3:
+		return nil, "", nil, invalidArgument(fmt.Sprintf("unknown link type %q", args[1]), hint)
+	case at < 0:
+		return nil, "", nil, invalidArgument(name+" takes issues, a link type, and issues", hint)
+	case at == 0 || at == len(args)-1:
+		return nil, "", nil, invalidArgument(name+" takes at least one issue on each side of "+args[at], hint)
+	}
+	return args[:at], args[at], args[at+1:], nil
 }
 
 // linkWordings is what each wording of tracker.LinkWordings means, for the
 // help of link and unlink.
-const linkWordings = `Link types, as in "A TYPE B":
+const linkWordings = `Link types, as in "A TYPE B" (or "A B TYPE C D", for every pair):
   A blocks B             B is blocked until A is done or omitted
   B blocked-by A         the same link, said from B's end
   A parent-of B          B is a child of A
@@ -33,23 +48,34 @@ const linkWordings = `Link types, as in "A TYPE B":
   B discovered-from A    B was found while working on A
 `
 
-// linkCommand builds `link` or `unlink`: both take `A TYPE B` in any
-// wording and print the link in its canonical direction.
-func (a *app) linkCommand(name, short, long, example, done string, change func(tracker.Tracker, *cobra.Command, []string) (tracker.Link, error)) *cobra.Command {
+// linkCommand builds `link` or `unlink`: both take `A... TYPE B...` in any
+// wording and print each link in its canonical direction.
+func (a *app) linkCommand(name, short, long, example, done string,
+	change func(tracker.Tracker, context.Context, []string, string, []string) ([]tracker.Link, error),
+) *cobra.Command {
 	return &cobra.Command{
 		Use:     name + " A TYPE B",
 		Short:   short,
 		Long:    short + ".\n\n" + linkWordings + long,
 		Example: example,
-		Args:    linkArgs(name),
+		Args: func(cmd *cobra.Command, args []string) error {
+			_, _, _, err := splitLinkArgs(name, args)
+			return err
+		},
 		RunE: action(func(cmd *cobra.Command, args []string) error {
+			left, wording, right, err := splitLinkArgs(name, args)
+			if err != nil {
+				return err
+			}
 			return withTracker(cmd.Context(), func(tr tracker.Tracker) error {
-				link, err := change(tr, cmd, args)
+				links, err := change(tr, cmd.Context(), left, wording, right)
 				if err != nil {
 					return err
 				}
-				return a.print(link, func(w io.Writer) {
-					fmt.Fprintf(w, "%s %s %s %s\n", done, link.From, link.Type, link.To)
+				return a.print(links, func(w io.Writer) {
+					for _, link := range links {
+						fmt.Fprintf(w, "%s %s %s %s\n", done, link.From, link.Type, link.To)
+					}
 				})
 			})
 		}),
@@ -58,37 +84,47 @@ func (a *app) linkCommand(name, short, long, example, done string, change func(t
 
 func (a *app) linkCmd() *cobra.Command {
 	return a.linkCommand("link",
-		"Link two issues: "+strings.Join(tracker.LinkWordings, ", "), `
+		"Link issues: "+strings.Join(tracker.LinkWordings, ", "), `
 Each link with a direction can be said from either end, and is stored and
 printed one way round: "A blocks B" and "A parent B". Linking two issues that
 are already linked that way changes nothing. A link that would close a loop
-of blocks and parent links is refused, and so is a second parent.`,
+of blocks and parent links is refused, and so is a second parent.
+
+Either side can name several issues: the link type splits them, and every
+issue on the left is linked to every issue on the right. If one of those
+links is refused, none is made.`,
 		`  tess link api-7kq blocks api-m2x
   tess link api-m2x blocked-by api-7kq            # the same link as the line above
   tess link api-7kq parent-of api-m2x
   tess link api-m2x child-of api-7kq              # the same link as the line above
   tess link api-7kq related api-m2x
   tess link api-m2x discovered-from api-7kq
+  tess link api-7kq api-m2x blocks api-r4d api-t9w  # four links: each on the left blocks each on the right
+  tess link api-m2x api-r4d child-of api-7kq      # two children of api-7kq
   tess link api-7kq blocks api-m2x --json`,
 		"linked",
-		func(tr tracker.Tracker, cmd *cobra.Command, args []string) (tracker.Link, error) {
-			return tr.Link(cmd.Context(), args[0], args[1], args[2])
+		func(tr tracker.Tracker, ctx context.Context, left []string, wording string, right []string) ([]tracker.Link, error) {
+			return tr.Link(ctx, left, wording, right)
 		})
 }
 
 func (a *app) unlinkCmd() *cobra.Command {
 	return a.linkCommand("unlink",
-		"Remove the link between two issues; takes the same wordings as link", `
+		"Remove the links between issues; takes the same wordings as link", `
 Either wording of a link removes it, whichever one it was made with.
-Removing a link that isn't there is refused.`,
+Removing a link that isn't there is refused.
+
+Either side can name several issues, as with link: the link between every
+issue on the left and every issue on the right is removed, or none is.`,
 		`  tess unlink api-7kq blocks api-m2x
   tess unlink api-m2x blocked-by api-7kq          # the same link as the line above
   tess unlink api-m2x child-of api-7kq
   tess unlink api-7kq related api-m2x
+  tess unlink api-7kq api-m2x blocks api-r4d      # two links: each on the left no longer blocks api-r4d
   tess unlink api-7kq blocks api-m2x --json`,
 		"unlinked",
-		func(tr tracker.Tracker, cmd *cobra.Command, args []string) (tracker.Link, error) {
-			return tr.Unlink(cmd.Context(), args[0], args[1], args[2])
+		func(tr tracker.Tracker, ctx context.Context, left []string, wording string, right []string) ([]tracker.Link, error) {
+			return tr.Unlink(ctx, left, wording, right)
 		})
 }
 

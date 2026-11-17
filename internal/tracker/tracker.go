@@ -129,12 +129,16 @@ type Tracker interface {
 	// changes nothing else but the status reason. force lets a blocked
 	// issue be marked done.
 	Status(ctx context.Context, partialIDs []string, status, reason string, force bool) (Change, error)
-	// Link adds the link `a WORDING b`, in any of LinkWordings, and returns
-	// it in its canonical direction. A link that is already there, in either
-	// wording, is returned as it is and nothing changes.
-	Link(ctx context.Context, a, wording, b string) (Link, error)
-	// Unlink removes the link `a WORDING b` and returns the link removed.
-	Unlink(ctx context.Context, a, wording, b string) (Link, error)
+	// Link adds a link `a WORDING b`, in any of LinkWordings, for every
+	// pair of an issue on the left and one on the right, in that order (all
+	// of the first left issue's pairs, then the next's), and returns them in
+	// their canonical direction. All are added or none. A link that is
+	// already there, in either wording, is returned as it is and nothing
+	// changes for it.
+	Link(ctx context.Context, left []string, wording string, right []string) ([]Link, error)
+	// Unlink removes the link `a WORDING b` for every pair, all of them or
+	// none, and returns the links removed.
+	Unlink(ctx context.Context, left []string, wording string, right []string) ([]Link, error)
 	// Tree returns the dependency tree below an issue: its children and the
 	// issues it is blocked by, and theirs in turn.
 	Tree(ctx context.Context, partialID string) (TreeNode, error)

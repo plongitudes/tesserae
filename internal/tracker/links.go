@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/plongitudes/tesserae/internal/store/sqlite"
@@ -20,6 +21,13 @@ type TreeNode = sqlite.TreeNode
 // LinkWordings are the words a link can be given in, as in `tess link A
 // WORDING B`. Each type that has a direction can be said from either end.
 var LinkWordings = []string{"blocks", "blocked-by", "parent-of", "child-of", "related", "discovered-from"}
+
+// IsLinkWording reports whether a word is a link type as link and unlink take
+// it: one of LinkWordings, or "parent".
+func IsLinkWording(word string) bool {
+	_, err := canonical("", word, "")
+	return err == nil
+}
 
 // canonical turns `a WORDING b` into the link in its canonical direction.
 // "parent", the type's own name, reads as parent-of: it is what a link is
@@ -42,36 +50,70 @@ func canonical(a, wording, b string) (Link, error) {
 	return Link{}, invalid(fmt.Sprintf("unknown link type %q", wording), "link types: "+strings.Join(LinkWordings, ", "))
 }
 
-func (t *tracker) Link(ctx context.Context, a, wording, b string) (Link, error) {
-	if _, err := canonical(a, wording, b); err != nil {
-		return Link{}, err
-	}
-	var link Link
-	err := t.store.Write(ctx, func(tx *sql.Tx) error {
-		idA, err := resolveLive(ctx, tx, a)
-		if err != nil {
-			return err
-		}
-		idB, err := resolveLive(ctx, tx, b)
-		if err != nil {
-			return err
-		}
-		asked, _ := canonical(idA, wording, idB)
+func (t *tracker) Link(ctx context.Context, left []string, wording string, right []string) ([]Link, error) {
+	return t.eachPair(ctx, left, wording, right, resolveLive, func(tx *sql.Tx, asked Link) (Link, error) {
 		existing, ok, err := admitLink(ctx, tx, asked)
+		if err != nil || ok {
+			return existing, err
+		}
+		return asked, sqlite.InsertLink(ctx, tx, asked, t.now(), t.actor)
+	})
+}
+
+// eachPair runs change, in one write transaction, on the link `a WORDING b`
+// for every pair of an issue on the left and one on the right: the first
+// left issue with each right one in turn, then the next. Each pair is judged
+// with the ones before it already made. One refusal undoes them all. An
+// issue named twice on one side counts once.
+func (t *tracker) eachPair(ctx context.Context, left []string, wording string, right []string,
+	find func(context.Context, *sql.Tx, string) (string, error),
+	change func(tx *sql.Tx, asked Link) (Link, error),
+) ([]Link, error) {
+	if _, err := canonical("", wording, ""); err != nil {
+		return nil, err
+	}
+	if len(left) == 0 || len(right) == 0 {
+		return nil, invalid("a link needs an issue on each side of the link type", "as in `tess link A "+wording+" B`")
+	}
+	var links []Link
+	err := t.store.Write(ctx, func(tx *sql.Tx) error {
+		side := func(partialIDs []string) ([]string, error) {
+			var ids []string
+			for _, partial := range partialIDs {
+				id, err := find(ctx, tx, partial)
+				if err != nil {
+					return nil, err
+				}
+				if !slices.Contains(ids, id) {
+					ids = append(ids, id)
+				}
+			}
+			return ids, nil
+		}
+		lefts, err := side(left)
 		if err != nil {
 			return err
 		}
-		if ok {
-			link = existing
-			return nil
+		rights, err := side(right)
+		if err != nil {
+			return err
 		}
-		link = asked
-		return sqlite.InsertLink(ctx, tx, link, t.now(), t.actor)
+		for _, a := range lefts {
+			for _, b := range rights {
+				asked, _ := canonical(a, wording, b)
+				link, err := change(tx, asked)
+				if err != nil {
+					return err
+				}
+				links = append(links, link)
+			}
+		}
+		return nil
 	})
 	if err != nil {
-		return Link{}, err
+		return nil, err
 	}
-	return link, nil
+	return links, nil
 }
 
 // admitLink holds a link between two issues that exist, given in its
@@ -117,47 +159,33 @@ func admitLink(ctx context.Context, tx *sql.Tx, link Link) (existing Link, ok bo
 	return Link{}, false, nil
 }
 
-func (t *tracker) Unlink(ctx context.Context, a, wording, b string) (Link, error) {
-	if _, err := canonical(a, wording, b); err != nil {
-		return Link{}, err
+func (t *tracker) Unlink(ctx context.Context, left []string, wording string, right []string) ([]Link, error) {
+	// A retired issue is reached by its exact ID, so that a link to one can
+	// be taken off; which end may be retired is decided below.
+	find := func(ctx context.Context, tx *sql.Tx, partialID string) (string, error) {
+		id, _, err := resolve(ctx, tx, partialID)
+		return id, err
 	}
-	var link Link
-	err := t.store.Write(ctx, func(tx *sql.Tx) error {
-		// A retired issue is reached by its exact ID, so that a link to one
-		// can be taken off; which end may be retired is decided below.
-		idA, _, err := resolve(ctx, tx, a)
-		if err != nil {
-			return err
-		}
-		idB, _, err := resolve(ctx, tx, b)
-		if err != nil {
-			return err
-		}
-		asked, _ := canonical(idA, wording, idB)
+	return t.eachPair(ctx, left, wording, right, find, func(tx *sql.Tx, asked Link) (Link, error) {
 		stored, ok, err := sqlite.FindLink(ctx, tx, asked)
 		if err != nil {
-			return err
+			return Link{}, err
 		}
 		if !ok {
-			return &Error{
+			return Link{}, &Error{
 				Code:    CodeNotFound,
 				Message: fmt.Sprintf("there is no %s link from %s to %s", asked.Type, asked.From, asked.To),
-				Hint:    fmt.Sprintf("tess show %s lists its links", idA),
+				Hint:    fmt.Sprintf("tess show %s lists its links", asked.From),
 			}
 		}
 		// Removing a link changes the issue it is logged on (the dependent,
 		// the child), and a retired issue can't be changed. The other end
 		// may be retired.
 		if _, err := resolveLive(ctx, tx, sqlite.LinkOwner(stored)); err != nil {
-			return err
+			return Link{}, err
 		}
-		link = stored
-		return sqlite.DeleteLink(ctx, tx, stored, t.now(), t.actor)
+		return stored, sqlite.DeleteLink(ctx, tx, stored, t.now(), t.actor)
 	})
-	if err != nil {
-		return Link{}, err
-	}
-	return link, nil
 }
 
 func cycleError(l Link) error {

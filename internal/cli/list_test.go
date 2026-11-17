@@ -116,7 +116,7 @@ func TestListTakesEveryFilterOfTheCommandSurface(t *testing.T) {
 	at(t, 7)
 	gone := newID(t, "Gone", "-p", "4")
 	ok[object](t, "retire", gone)
-	ok[object](t, "link", p.chore, "blocks", p.second)
+	ok[[]any](t, "link", p.chore, "blocks", p.second)
 
 	all := []string{p.grand, p.epic, p.second, p.chore, p.first}
 	for _, tc := range []struct {
@@ -295,8 +295,8 @@ func TestBlockedListsShowWhatBlocksEachIssue(t *testing.T) {
 	parent := newID(t, "Parent")
 	at(t, 4)
 	child := newID(t, "Child", "--parent", parent)
-	ok[object](t, "link", gate, "blocks", parent)
-	ok[object](t, "link", other, "blocks", parent)
+	ok[[]any](t, "link", gate, "blocks", parent)
+	ok[[]any](t, "link", other, "blocks", parent)
 	ok[object](t, "status", other, "done")
 	// Other is done, so only Gate is named; Child is blocked by way of
 	// its parent.

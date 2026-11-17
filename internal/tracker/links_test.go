@@ -1,27 +1,43 @@
 package tracker_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/plongitudes/tesserae/internal/tracker"
 )
 
+// link makes one link, between a and b.
 func (f *fixture) link(a, wording, b string) tracker.Link {
 	f.t.Helper()
-	l, err := f.tr.Link(f.ctx, a, wording, b)
+	links, err := f.tr.Link(f.ctx, []string{a}, wording, []string{b})
 	if err != nil {
 		f.t.Fatalf("Link(%s %s %s): %v", a, wording, b, err)
 	}
-	return l
+	if len(links) != 1 {
+		f.t.Fatalf("Link(%s %s %s) returned %d links; want 1", a, wording, b, len(links))
+	}
+	return links[0]
 }
 
+// unlink removes one link, between a and b.
 func (f *fixture) unlink(a, wording, b string) tracker.Link {
 	f.t.Helper()
-	l, err := f.tr.Unlink(f.ctx, a, wording, b)
+	links, err := f.tr.Unlink(f.ctx, []string{a}, wording, []string{b})
 	if err != nil {
 		f.t.Fatalf("Unlink(%s %s %s): %v", a, wording, b, err)
 	}
-	return l
+	if len(links) != 1 {
+		f.t.Fatalf("Unlink(%s %s %s) returned %d links; want 1", a, wording, b, len(links))
+	}
+	return links[0]
+}
+
+func wantLinks(t *testing.T, got []tracker.Link, want ...tracker.Link) {
+	t.Helper()
+	if !slices.Equal(got, want) {
+		t.Errorf("links = %+v; want %+v", got, want)
+	}
 }
 
 func wantLink(t *testing.T, got tracker.Link, from, typ, to string) {
@@ -197,14 +213,14 @@ func TestUnlinkAcceptsEveryWording(t *testing.T) {
 func TestUnlinkingALinkThatIsNotThereIsRefused(t *testing.T) {
 	f := newFixture(t)
 	a, b := f.titled("A"), f.titled("B")
-	_, err := f.tr.Unlink(f.ctx, a, "blocks", b)
+	_, err := f.tr.Unlink(f.ctx, []string{a}, "blocks", []string{b})
 	wantCode(t, err, tracker.CodeNotFound)
 
 	// The same pair the other way round is a different link.
 	f.link(a, "blocks", b)
-	_, err = f.tr.Unlink(f.ctx, b, "blocks", a)
+	_, err = f.tr.Unlink(f.ctx, []string{b}, "blocks", []string{a})
 	wantCode(t, err, tracker.CodeNotFound)
-	_, err = f.tr.Unlink(f.ctx, a, "related", b)
+	_, err = f.tr.Unlink(f.ctx, []string{a}, "related", []string{b})
 	wantCode(t, err, tracker.CodeNotFound)
 	wantStrings(t, "A blocks", f.get(a).Links.Blocks, b)
 }
@@ -213,16 +229,16 @@ func TestLinkRefusesUnknownWordingsAndIssues(t *testing.T) {
 	f := newFixture(t)
 	a, b := f.titled("A"), f.titled("B")
 	for _, wording := range []string{"duplicates", "supersedes", "parent-child", "discovered", ""} {
-		_, err := f.tr.Link(f.ctx, a, wording, b)
+		_, err := f.tr.Link(f.ctx, []string{a}, wording, []string{b})
 		wantCode(t, err, tracker.CodeInvalidArgument)
-		_, err = f.tr.Unlink(f.ctx, a, wording, b)
+		_, err = f.tr.Unlink(f.ctx, []string{a}, wording, []string{b})
 		wantCode(t, err, tracker.CodeInvalidArgument)
 	}
-	_, err := f.tr.Link(f.ctx, a, "blocks", "t-zzzzzzzz")
+	_, err := f.tr.Link(f.ctx, []string{a}, "blocks", []string{"t-zzzzzzzz"})
 	wantCode(t, err, tracker.CodeNotFound)
-	_, err = f.tr.Link(f.ctx, "t-zzzzzzzz", "blocks", a)
+	_, err = f.tr.Link(f.ctx, []string{"t-zzzzzzzz"}, "blocks", []string{a})
 	wantCode(t, err, tracker.CodeNotFound)
-	_, err = f.tr.Link(f.ctx, "t-", "blocks", a) // matches both issues
+	_, err = f.tr.Link(f.ctx, []string{"t-"}, "blocks", []string{a}) // matches both issues
 	wantCode(t, err, tracker.CodeAmbiguousID)
 }
 
@@ -240,9 +256,9 @@ func TestLinkingToARetiredIssueIsRefused(t *testing.T) {
 	a, b := f.titled("A"), f.titled("B")
 	f.retire(a)
 	for _, wording := range []string{"blocks", "blocked-by", "parent-of", "child-of", "related", "discovered-from"} {
-		_, err := f.tr.Link(f.ctx, a, wording, b)
+		_, err := f.tr.Link(f.ctx, []string{a}, wording, []string{b})
 		wantCode(t, err, tracker.CodeRetired)
-		_, err = f.tr.Link(f.ctx, b, wording, a)
+		_, err = f.tr.Link(f.ctx, []string{b}, wording, []string{a})
 		wantCode(t, err, tracker.CodeRetired)
 	}
 	f.wantChanges(b)
@@ -250,7 +266,7 @@ func TestLinkingToARetiredIssueIsRefused(t *testing.T) {
 
 func (f *fixture) wantLinkRefused(a, wording, b, code string) {
 	f.t.Helper()
-	_, err := f.tr.Link(f.ctx, a, wording, b)
+	_, err := f.tr.Link(f.ctx, []string{a}, wording, []string{b})
 	if err == nil {
 		f.t.Errorf("Link(%s %s %s) succeeded; want %s", a, wording, b, code)
 		return
@@ -379,7 +395,7 @@ func TestAChildOfARetiredParentStillHasAParentUntilUnlinked(t *testing.T) {
 
 	// The link is the child's, so it can be taken off while the parent is
 	// retired; the retired parent needs its exact ID.
-	_, err := f.tr.Unlink(f.ctx, p[2:], "parent-of", c)
+	_, err := f.tr.Unlink(f.ctx, []string{p[2:]}, "parent-of", []string{c})
 	wantCode(t, err, tracker.CodeNotFound)
 	wantLink(t, f.unlink(p, "parent-of", c), p, "parent", c)
 	f.link(q, "parent-of", c)
@@ -396,10 +412,106 @@ func TestUnlinkRefusesToChangeARetiredIssue(t *testing.T) {
 	f.retire(c)
 	f.retire(b)
 	// These links are logged on the retired child and dependent.
-	_, err := f.tr.Unlink(f.ctx, p, "parent-of", c)
+	_, err := f.tr.Unlink(f.ctx, []string{p}, "parent-of", []string{c})
 	wantCode(t, err, tracker.CodeRetired)
-	_, err = f.tr.Unlink(f.ctx, b, "blocked-by", a)
+	_, err = f.tr.Unlink(f.ctx, []string{b}, "blocked-by", []string{a})
 	wantCode(t, err, tracker.CodeRetired)
 	f.wantChanges(c, change{"parent", nil, p}, change{"retired_at", nil, "2026-01-01T00:00:00Z"})
 	f.wantChanges(b, change{"blocked_by", nil, a}, change{"retired_at", nil, "2026-01-01T00:00:00Z"})
+}
+
+func TestLinkingSeveralIssuesOnEitherSideLinksEveryPairInOrder(t *testing.T) {
+	f := newFixture(t)
+	a, b, c, d := f.titled("A"), f.titled("B"), f.titled("C"), f.titled("D")
+	got, err := f.tr.Link(f.ctx, []string{a, b[2:]}, "blocks", []string{c, d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks(t, got,
+		tracker.Link{From: a, Type: "blocks", To: c},
+		tracker.Link{From: a, Type: "blocks", To: d},
+		tracker.Link{From: b, Type: "blocks", To: c},
+		tracker.Link{From: b, Type: "blocks", To: d})
+	wantStrings(t, "c blocked_by", f.get(c).Links.BlockedBy, sorted(a, b)...)
+	wantStrings(t, "d blocked_by", f.get(d).Links.BlockedBy, sorted(a, b)...)
+}
+
+func TestSeveralIssuesInAnInverseWordingKeepTheOrderGiven(t *testing.T) {
+	f := newFixture(t)
+	a, b, p := f.titled("A"), f.titled("B"), f.titled("P")
+	got, err := f.tr.Link(f.ctx, []string{a, b}, "child-of", []string{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks(t, got,
+		tracker.Link{From: p, Type: "parent", To: a},
+		tracker.Link{From: p, Type: "parent", To: b})
+}
+
+func TestOneRefusalAmongSeveralLinksLinksNothing(t *testing.T) {
+	f := newFixture(t)
+	a, b, c := f.titled("A"), f.titled("B"), f.titled("C")
+	_, err := f.tr.Link(f.ctx, []string{a}, "blocks", []string{b, "t-zzzzzzzz"})
+	wantCode(t, err, tracker.CodeNotFound)
+	wantStrings(t, "a blocks", f.get(a).Links.Blocks)
+
+	// The second pair is refused because of the first: both are undone.
+	_, err = f.tr.Link(f.ctx, []string{a, b}, "parent-of", []string{c})
+	wantCode(t, err, tracker.CodeHasParent)
+	if parent := f.get(c).Parent; parent != nil {
+		t.Errorf("c has parent %s after a refused link", *parent)
+	}
+	f.wantChanges(c)
+}
+
+func TestAnIssueNamedTwiceOnOneSideIsLinkedOnce(t *testing.T) {
+	f := newFixture(t)
+	a, b := f.titled("A"), f.titled("B")
+	got, err := f.tr.Link(f.ctx, []string{a, a[2:]}, "blocks", []string{b, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks(t, got, tracker.Link{From: a, Type: "blocks", To: b})
+	got, err = f.tr.Unlink(f.ctx, []string{a, a}, "blocks", []string{b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks(t, got, tracker.Link{From: a, Type: "blocks", To: b})
+}
+
+func TestLinkingNeedsAnIssueOnEachSide(t *testing.T) {
+	f := newFixture(t)
+	a := f.titled("A")
+	_, err := f.tr.Link(f.ctx, nil, "blocks", []string{a})
+	wantCode(t, err, tracker.CodeInvalidArgument)
+	_, err = f.tr.Unlink(f.ctx, []string{a}, "blocks", nil)
+	wantCode(t, err, tracker.CodeInvalidArgument)
+}
+
+func TestUnlinkingSeveralIssuesRemovesEveryPairOrNone(t *testing.T) {
+	f := newFixture(t)
+	a, b, c, d := f.titled("A"), f.titled("B"), f.titled("C"), f.titled("D")
+	if _, err := f.tr.Link(f.ctx, []string{a, b}, "blocks", []string{c, d}); err != nil {
+		t.Fatal(err)
+	}
+	f.unlink(b, "blocks", d)
+
+	// b no longer blocks d, so the whole removal is refused.
+	_, err := f.tr.Unlink(f.ctx, []string{a, b}, "blocks", []string{c, d})
+	wantCode(t, err, tracker.CodeNotFound)
+	wantStrings(t, "c blocked_by", f.get(c).Links.BlockedBy, sorted(a, b)...)
+
+	got, err := f.tr.Unlink(f.ctx, []string{c}, "blocked-by", []string{a, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLinks(t, got,
+		tracker.Link{From: a, Type: "blocks", To: c},
+		tracker.Link{From: b, Type: "blocks", To: c})
+	wantStrings(t, "c blocked_by", f.get(c).Links.BlockedBy)
+}
+
+func sorted(ids ...string) []string {
+	slices.Sort(ids)
+	return ids
 }

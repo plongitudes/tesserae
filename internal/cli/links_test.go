@@ -20,7 +20,7 @@ func TestLinkPrintsTheLinkInItsCanonicalDirectionForEveryWording(t *testing.T) {
 		{[]string{a, "related", b}, object{"from": a, "type": "related", "to": b}},
 		{[]string{b, "discovered-from", a}, object{"from": b, "type": "discovered-from", "to": a}},
 	} {
-		if got := ok[object](t, append([]string{"link"}, tc.args...)...); !reflect.DeepEqual(got, tc.want) {
+		if got := ok[[]any](t, append([]string{"link"}, tc.args...)...); !reflect.DeepEqual(got, []any{tc.want}) {
 			t.Errorf("link %v printed %v, want %v", tc.args, got, tc.want)
 		}
 	}
@@ -38,9 +38,9 @@ func TestLinkPrintsTheLinkInItsCanonicalDirectionForEveryWording(t *testing.T) {
 func TestUnlinkTakesEitherWordingAndPrintsTheLinkRemoved(t *testing.T) {
 	inInitialisedRepo(t)
 	a, b := newID(t, "A"), newID(t, "B")
-	ok[object](t, "link", a, "blocks", b)
-	got := ok[object](t, "unlink", b, "blocked-by", a)
-	if want := (object{"from": a, "type": "blocks", "to": b}); !reflect.DeepEqual(got, want) {
+	ok[[]any](t, "link", a, "blocks", b)
+	got := ok[[]any](t, "unlink", b, "blocked-by", a)
+	if want := ([]any{object{"from": a, "type": "blocks", "to": b}}); !reflect.DeepEqual(got, want) {
 		t.Errorf("unlink printed %v, want %v", got, want)
 	}
 	if blocks := ok[object](t, "show", a)["links"].(object)["blocks"]; len(blocks.([]any)) != 0 {
@@ -64,13 +64,17 @@ func TestLinkAndUnlinkPlainOutputNamesTheCanonicalLink(t *testing.T) {
 func TestLinkRefusalsKeepTheirCodes(t *testing.T) {
 	inInitialisedRepo(t)
 	a, b, c := newID(t, "A"), newID(t, "B"), newID(t, "C")
-	ok[object](t, "link", a, "parent-of", b)
+	ok[[]any](t, "link", a, "parent-of", b)
 	for _, tc := range []struct {
 		args []string
 		code string
 	}{
 		{[]string{"link", a, "duplicates", b}, "invalid_argument"},
 		{[]string{"link", a, "blocks"}, "invalid_argument"},
+		{[]string{"link", "blocks", b}, "invalid_argument"},
+		{[]string{"link", a, b}, "invalid_argument"},
+		{[]string{"link", a, "blocks", b, "blocks", c}, "invalid_argument"},
+		{[]string{"unlink", a}, "invalid_argument"},
 		{[]string{"link", a, "blocks", "x-zzzzzzzz"}, "not_found"},
 		{[]string{"link", c, "parent-of", b}, "has_parent"},
 		{[]string{"link", b, "parent-of", a}, "cycle"},
@@ -87,8 +91,8 @@ func TestLinkRefusalsKeepTheirCodes(t *testing.T) {
 func TestTreePrintsNestedNodesAsJSON(t *testing.T) {
 	inInitialisedRepo(t)
 	root, child, blocker := newID(t, "Root"), newID(t, "Child"), newID(t, "Blocker")
-	ok[object](t, "link", root, "parent-of", child)
-	ok[object](t, "link", blocker, "blocks", child)
+	ok[[]any](t, "link", root, "parent-of", child)
+	ok[[]any](t, "link", blocker, "blocks", child)
 	got := ok[object](t, "tree", root)
 	want := object{
 		"id": root, "title": "Root", "status": "waiting", "blocked_by": []any{},
@@ -119,5 +123,46 @@ func TestTreePlainOutputIndentsChildrenAndMarksBlockers(t *testing.T) {
 	}, "\n")
 	if r.code != 0 || r.stdout != want {
 		t.Errorf("exit %d (%s), stdout:\n%s\nwant:\n%s", r.code, r.stderr, r.stdout, want)
+	}
+}
+
+func TestLinkWithSeveralIssuesOnEitherSidePrintsEveryPairInOrder(t *testing.T) {
+	inInitialisedRepo(t)
+	a, b, c, d := newID(t, "A"), newID(t, "B"), newID(t, "C"), newID(t, "D")
+	link := func(from, to string) any { return object{"from": from, "type": "blocks", "to": to} }
+
+	got := ok[[]any](t, "link", a, b, "blocks", c, d)
+	if want := []any{link(a, c), link(a, d), link(b, c), link(b, d)}; !reflect.DeepEqual(got, want) {
+		t.Errorf("link printed %v, want %v", got, want)
+	}
+	// Said from the other end, the pairs follow the order typed.
+	got = ok[[]any](t, "unlink", c, d, "blocked-by", a)
+	if want := []any{link(a, c), link(a, d)}; !reflect.DeepEqual(got, want) {
+		t.Errorf("unlink printed %v, want %v", got, want)
+	}
+	if blockedBy := ok[object](t, "show", d)["links"].(object)["blocked_by"]; !reflect.DeepEqual(blockedBy, []any{b}) {
+		t.Errorf("d is blocked by %v, want only %s", blockedBy, b)
+	}
+}
+
+func TestLinkAndUnlinkPlainOutputIsOneLinePerPair(t *testing.T) {
+	inInitialisedRepo(t)
+	a, b, c := newID(t, "A"), newID(t, "B"), newID(t, "C")
+	r := tess(t, "link", a, b, "blocks", c)
+	if want := "linked " + a + " blocks " + c + "\nlinked " + b + " blocks " + c + "\n"; r.code != 0 || r.stdout != want {
+		t.Errorf("link: exit %d, stdout %q, want %q (%s)", r.code, r.stdout, want, r.stderr)
+	}
+	r = tess(t, "unlink", c, "blocked-by", a, b)
+	if want := "unlinked " + a + " blocks " + c + "\nunlinked " + b + " blocks " + c + "\n"; r.code != 0 || r.stdout != want {
+		t.Errorf("unlink: exit %d, stdout %q, want %q (%s)", r.code, r.stdout, want, r.stderr)
+	}
+}
+
+func TestOneRefusedPairLinksNothing(t *testing.T) {
+	inInitialisedRepo(t)
+	a, b := newID(t, "A"), newID(t, "B")
+	wantError(t, tess(t, "link", a, "blocks", b, "x-zzzzzzzz", "--json"), "not_found")
+	if blocks := ok[object](t, "show", a)["links"].(object)["blocks"]; len(blocks.([]any)) != 0 {
+		t.Errorf("blocks is %v after a refused link", blocks)
 	}
 }
