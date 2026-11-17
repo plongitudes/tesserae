@@ -186,3 +186,57 @@ func TestHelpNeedsNoRepository(t *testing.T) {
 		t.Fatalf("exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
 	}
 }
+
+// everyWord is everything tess says about how to use it: the orientation,
+// each command's help, and the skill.
+func everyWord(t *testing.T) map[string]string {
+	t.Helper()
+	inDir(t, isolate(t), "anywhere")
+	words := map[string]string{
+		"the orientation": tess(t).stdout,
+		"the skill":       string(skillText),
+	}
+	for _, cmd := range everyCommand(t) {
+		words[cmd.CommandPath()+" --help"] = cmd.Short + "\n" + cmd.Long + "\n" + cmd.UsageString()
+	}
+	return words
+}
+
+// The tree command went away in favour of `show --tree`; nothing may still
+// send a reader to it.
+func TestNothingNamesTheTreeCommand(t *testing.T) {
+	gone := "tess" + " tree"
+	for where, text := range everyWord(t) {
+		if strings.Contains(text, gone) || strings.Contains(text, "\n  tree ") {
+			t.Errorf("%s still names the tree command:\n%s", where, text)
+		}
+	}
+}
+
+// The forms the dogfood pass added are shown where a reader looks for them:
+// in the help of the command that has them, and in the skill.
+func TestTheWordsShowTheNewForms(t *testing.T) {
+	words := everyWord(t)
+	for where, wants := range map[string][]string{
+		"tess link --help":   {"tess link api-7kq api-m2x blocks api-r4d", "ancestor"},
+		"tess unlink --help": {"tess unlink api-7kq api-m2x blocks api-r4d"},
+		"tess show --help":   {"tess show api-7kq --tree", "tess show api-7kq --field notes"},
+		"tess update --help": {"--notes \"Retried with a longer timeout; same failure\" --append"},
+		"tess list --help":   {"tess list -s 7kq", "only issues whose id, title"},
+		"the orientation":    {"--tree", "--field", "--append", "-s", "tess link A blocks B"},
+		"the skill": {
+			"tess link A B blocks C", "tess show ID --tree", "tess show ID --field notes",
+			"--notes - --append", "`-s TEXT` (matches the ID",
+		},
+	} {
+		text, ok := words[where]
+		if !ok {
+			t.Errorf("there is no %s", where)
+		}
+		for _, want := range wants {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s doesn't show %q", where, want)
+			}
+		}
+	}
+}

@@ -17,6 +17,8 @@ tess is this repository's issue tracker. The issues are in one database that eve
    - new work: `tess create "Title" -t bug -p 1 -d "What and why"`, then `tess link NEW discovered-from ID`
    - a part of this issue: `tess create "Title" --parent ID`
    - work that has to come first: `tess create "Title"`, then `tess link NEW blocks ID`
+   - several links at once: `tess link A B blocks C` links every issue on the left to every issue on the right
+   - a note as you go: `tess update ID --notes "What I tried" --append` adds a paragraph and keeps what is there
    - a decision or a finding: `tess comment ID "What was decided and why"`
    - stuck on something outside the work: `tess status ID held -r "what it is waiting for"`
 5. Finish: `tess status ID done`, or `tess status ID pending-review` when a person should look first.
@@ -35,12 +37,13 @@ tess is this repository's issue tracker. The issues are in one database that eve
 - An issue: `id`, `title`, `description`, `design`, `acceptance_criteria`, `notes`, `type`, `priority` (0 is most urgent, 4 least), `status`, `status_reason`, `blocked`, `assignee`, `owner`, `labels`, `parent`, `ancestors` (nearest first), `due_at`, `created_at`, `created_by`, `updated_at`, `retired_at`.
 - `tess show` adds `links` (`blocks`, `blocked_by`, `children`, `related`, `discovered_from`, `discovered`, each a list of IDs) and `comments`; `--history` adds `history`, and `--tree` adds `tree` (nested `id`, `title`, `status`, `children`, `blocked_by`). `tess show ID --field notes` prints one field raw.
 - `tess list` and `tess ready` print an array of issues. `tess status` and `tess retire` print `{"updated": [...], "newly_unblocked": [...]}`; `newly_unblocked` is what can start now.
-- An error is `{"error": {"code", "message", "hint"}}` on stderr with exit status 1. The `code` is stable, and the `hint` says what to try.
+- An error is `{"error": {"code", "message", "hint"}}` on stderr with exit status 1. The `code` is stable, and the `hint` says what to try; for a mistyped command (`invalid_argument`) it is the command's usage line.
 
 ## Finding things
 
-- `tess list --status waiting`, `--blocked`, `--label L`, `--assignee A`, `--parent ID`, `-s TEXT`; `--all` includes done and omitted issues.
+- `tess list --status waiting`, `--blocked`, `--label L`, `--assignee A`, `--parent ID`, `-s TEXT` (matches the ID, title, description and notes); `--all` includes done and omitted issues.
 - `tess show ID --tree` adds the issue's children and blockers, nested, and theirs.
 - `tess show ID --history` lists every change to an issue and who made it.
 - IDs can be shortened to any part that is unique: `tess show 3kq`.
-- Text flags take `-` to read stdin: `tess update ID --notes - < notes.md`.
+- Text flags take `-` to read stdin: `tess update ID --notes - --append < more.md`. Without `--append` the text replaces the field.
+- A `blocks` link that would close a loop is refused with `cycle`, and so is one between an issue and its own ancestor or descendant: a parent already waits for its children.

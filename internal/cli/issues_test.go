@@ -490,15 +490,7 @@ func TestThereIsNoTreeCommand(t *testing.T) {
 	inInitialisedRepo(t)
 	id := newID(t, "A")
 	wantError(t, tess(t, "tree", id, "--json"), "invalid_argument")
-	for _, args := range [][]string{{}, {"--help"}, {"show", "--help"}} {
-		if r := tess(t, args...); strings.Contains(r.stdout, "tess tree") || strings.Contains(r.stdout, "\n  tree ") {
-			t.Errorf("tess %v still names the tree command:\n%s", args, r.stdout)
-		}
-	}
-	if strings.Contains(string(skillText), "tess tree") {
-		t.Errorf("the skill still names `tess tree`")
-	}
-	if !strings.Contains(string(skillText), "--tree") {
+	if !strings.Contains(string(skillText), "tess show ID --tree") {
 		t.Errorf("the skill doesn't mention `tess show ID --tree`")
 	}
 }

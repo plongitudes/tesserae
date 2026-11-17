@@ -69,6 +69,7 @@ under its ancestors; elsewhere the output is one line per issue.`,
   tess list --parent api-7kq --all         # everything under an epic
   tess list --type bug --label auth -n 20
   tess list -s "redirect"
+  tess list -s 7kq                         # -s matches IDs too
   tess list --retired
   tess list --tree | less
   tess list --all --json`,

@@ -87,7 +87,9 @@ func (a *app) linkCmd() *cobra.Command {
 Each link with a direction can be said from either end, and is stored and
 printed one way round: "A blocks B" and "A parent B". Linking two issues that
 are already linked that way changes nothing. A link that would close a loop
-of blocks and parent links is refused, and so is a second parent.
+of blocks and parent links is refused, and so is a second parent. A blocks
+link between an issue and its own ancestor or descendant is refused as a
+loop too: a parent already waits for its open children.
 
 Either side can name several issues: the link type splits them, and every
 issue on the left is linked to every issue on the right. If one of those

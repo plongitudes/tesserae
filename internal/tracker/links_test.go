@@ -634,8 +634,8 @@ func TestACycleHintPointsAtShowTree(t *testing.T) {
 	p, c := f.titled("P"), f.titled("C")
 	f.link(p, "parent-of", c)
 	for _, refusal := range []*tracker.Error{f.cycleRefusal(c, "blocks", p), f.cycleRefusal(p, "blocks", c)} {
-		if strings.Contains(refusal.Hint, "tess tree") || !strings.Contains(refusal.Hint, "--tree") {
-			t.Errorf("hint %q; want it to name `tess show ID --tree`", refusal.Hint)
+		if want := "tess show " + p + " --tree"; !strings.Contains(refusal.Hint, want) {
+			t.Errorf("hint %q; want it to name `%s`", refusal.Hint, want)
 		}
 	}
 }
