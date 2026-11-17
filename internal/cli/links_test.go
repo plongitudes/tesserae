@@ -2,7 +2,6 @@ package cli
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -87,48 +86,8 @@ func TestLinkRefusalsKeepTheirCodes(t *testing.T) {
 		{[]string{"link", a, "blocks", a}, "cycle"},
 		{[]string{"unlink", a, "blocks", c}, "not_found"},
 		{[]string{"unlink", a, "supersedes", b}, "invalid_argument"},
-		{[]string{"tree"}, "invalid_argument"},
-		{[]string{"tree", "x-zzzzzzzz"}, "not_found"},
 	} {
 		wantError(t, tess(t, append(tc.args, "--json")...), tc.code)
-	}
-}
-
-func TestTreePrintsNestedNodesAsJSON(t *testing.T) {
-	inInitialisedRepo(t)
-	root, child, blocker := newID(t, "Root"), newID(t, "Child"), newID(t, "Blocker")
-	ok[[]any](t, "link", root, "parent-of", child)
-	ok[[]any](t, "link", blocker, "blocks", child)
-	got := ok[object](t, "tree", root)
-	want := object{
-		"id": root, "title": "Root", "status": "waiting", "blocked_by": []any{},
-		"children": []any{object{
-			"id": child, "title": "Child", "status": "waiting", "children": []any{},
-			"blocked_by": []any{object{
-				"id": blocker, "title": "Blocker", "status": "ready",
-				"children": []any{}, "blocked_by": []any{},
-			}},
-		}},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("tree is %v, want %v", got, want)
-	}
-}
-
-func TestTreePlainOutputIndentsChildrenAndMarksBlockers(t *testing.T) {
-	inInitialisedRepo(t)
-	root, child, blocker := newID(t, "Root"), newID(t, "Child"), newID(t, "Blocker")
-	tess(t, "link", root, "parent-of", child)
-	tess(t, "link", blocker, "blocks", child)
-	r := tess(t, "tree", root)
-	want := strings.Join([]string{
-		"⊖ " + root + " Root",
-		"  ⊖ " + child + " Child",
-		"    blocked by ○ " + blocker + " Blocker",
-		"",
-	}, "\n")
-	if r.code != 0 || r.stdout != want {
-		t.Errorf("exit %d (%s), stdout:\n%s\nwant:\n%s", r.code, r.stderr, r.stdout, want)
 	}
 }
 

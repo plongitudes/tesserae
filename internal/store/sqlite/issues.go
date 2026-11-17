@@ -26,9 +26,9 @@ func ParseTime(s string) (time.Time, error) {
 
 // Issue is an issue as it reads: the issue object of acceptance/README.md.
 // Status is the displayed status, and Blocked the computed condition, both
-// from the issue_states view. Links, Comments, PreviousStatus and History
-// are nil unless loaded (LoadDetail, LoadHistory) and are left out of the
-// JSON when nil.
+// from the issue_states view. Links, Comments, PreviousStatus, History and
+// Tree are nil unless loaded (LoadDetail, LoadHistory, LoadTree) and are
+// left out of the JSON when nil.
 type Issue struct {
 	ID                 string     `json:"id"`
 	Title              string     `json:"title"`
@@ -56,6 +56,7 @@ type Issue struct {
 	Comments       []Comment `json:"comments,omitzero"`
 	PreviousStatus *string   `json:"previous_status,omitzero"`
 	History        []Event   `json:"history,omitzero"`
+	Tree           *TreeNode `json:"tree,omitzero"`
 }
 
 // Links are the IDs an issue is linked to, by the role the other issue

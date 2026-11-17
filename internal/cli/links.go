@@ -128,43 +128,20 @@ issue on the left and every issue on the right is removed, or none is.`,
 		})
 }
 
-func (a *app) treeCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "tree ID",
-		Short: "Show an issue with its children and blockers, and theirs",
-		Long: `Show an issue with its children and blockers, and theirs.
-
-The tree runs downwards from the issue: under each issue come the issues that
-block it, marked "blocked by", and then its children.`,
-		Example: `  tess tree api-7kq
-  tess tree api-7kq --json`,
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return invalidArgument("tree takes one issue ID", "as in `tess tree ID`")
-			}
-			return nil
-		},
-		RunE: action(func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			return withTracker(ctx, func(tr tracker.Tracker) error {
-				root, err := tr.Tree(ctx, args[0])
-				if err != nil {
-					return err
-				}
-				return a.print(root, func(w io.Writer) { writeTree(w, root, "", "") })
-			})
-		}),
-	}
-}
-
-// writeTree writes a node as a list line, then its blockers (marked
-// `blocked by`) and its children, each one step further in.
+// writeTree writes a node as a list line, then what is under it, one step
+// further in.
 func writeTree(w io.Writer, node tracker.TreeNode, indent, mark string) {
 	fmt.Fprintf(w, "%s%s%s %s %s\n", indent, mark, symbols[node.Status], node.ID, node.Title)
+	writeTreeUnder(w, node, indent+"  ")
+}
+
+// writeTreeUnder writes what is under a node: its blockers (marked
+// `blocked by`), then its children.
+func writeTreeUnder(w io.Writer, node tracker.TreeNode, indent string) {
 	for _, blocker := range node.BlockedBy {
-		writeTree(w, blocker, indent+"  ", "blocked by ")
+		writeTree(w, blocker, indent, "blocked by ")
 	}
 	for _, child := range node.Children {
-		writeTree(w, child, indent+"  ", "")
+		writeTree(w, child, indent, "")
 	}
 }

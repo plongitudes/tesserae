@@ -109,3 +109,17 @@ func Tree(ctx context.Context, tx *sql.Tx, rootID string) (root TreeNode, ok boo
 	}
 	return build(rootID, 0), true, nil
 }
+
+// LoadTree sets the issue's Tree: the dependency tree below it, the issue
+// itself at the root.
+func LoadTree(ctx context.Context, tx *sql.Tx, issue *Issue) error {
+	root, ok, err := Tree(ctx, tx, issue.ID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("issue %s is missing", issue.ID)
+	}
+	issue.Tree = &root
+	return nil
+}

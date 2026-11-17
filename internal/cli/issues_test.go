@@ -396,3 +396,152 @@ func TestPlainStatusSaysWhyAnIssueShowsAsWaiting(t *testing.T) {
 	ok[object](t, "status", gate, "ready")
 	wantPlain(t, tess(t, "status", parent, "in-progress"), "◐ "+parent+" Parent")
 }
+
+func TestShowWithTreeAddsTheNestedNodesBelowTheIssue(t *testing.T) {
+	inInitialisedRepo(t)
+	root, child, blocker := newID(t, "Root"), newID(t, "Child"), newID(t, "Blocker")
+	ok[[]any](t, "link", root, "parent-of", child)
+	ok[[]any](t, "link", blocker, "blocks", child)
+
+	if _, has := ok[object](t, "show", root)["tree"]; has {
+		t.Errorf("show without --tree has a tree")
+	}
+	got := ok[object](t, "show", root, "--tree")
+	want := object{
+		"id": root, "title": "Root", "status": "waiting", "blocked_by": []any{},
+		"children": []any{object{
+			"id": child, "title": "Child", "status": "waiting", "children": []any{},
+			"blocked_by": []any{object{
+				"id": blocker, "title": "Blocker", "status": "ready",
+				"children": []any{}, "blocked_by": []any{},
+			}},
+		}},
+	}
+	if !reflect.DeepEqual(got["tree"], want) {
+		t.Errorf("tree is %v, want %v", got["tree"], want)
+	}
+	// The tree is one more key of the issue object, not a different result.
+	if got["id"] != root || got["links"] == nil || got["comments"] == nil {
+		t.Errorf("show --tree is not the issue object: %v", got)
+	}
+	// Each of several issues carries its own.
+	both := ok[[]object](t, "show", child, blocker, "--tree")
+	if len(both) != 2 || both[0]["tree"].(object)["id"] != child || both[1]["tree"].(object)["id"] != blocker {
+		t.Errorf("show of two issues with --tree gave %v", both)
+	}
+}
+
+func TestPlainShowWithTreePrintsTheTreeIndentedUnderTheIssue(t *testing.T) {
+	inInitialisedRepo(t)
+	root, child, blocker := newID(t, "Root"), newID(t, "Child"), newID(t, "Blocker")
+	tess(t, "link", root, "parent-of", child)
+	tess(t, "link", blocker, "blocks", child)
+
+	plain := tess(t, "show", root)
+	r := tess(t, "show", root, "--tree")
+	want := plain.stdout + strings.Join([]string{
+		"",
+		"Tree:",
+		"  ⊖ " + child + " Child",
+		"    blocked by ○ " + blocker + " Blocker",
+		"",
+	}, "\n")
+	if r.code != 0 || r.stdout != want {
+		t.Errorf("exit %d (%s), stdout:\n%s\nwant:\n%s", r.code, r.stderr, r.stdout, want)
+	}
+
+	// An issue with nothing under it says so.
+	r = tess(t, "show", blocker, "--tree")
+	if !strings.HasSuffix(r.stdout, "\nTree:\n  no children or blockers\n") {
+		t.Errorf("show --tree of a leaf:\n%s", r.stdout)
+	}
+}
+
+func TestThereIsNoTreeCommand(t *testing.T) {
+	inInitialisedRepo(t)
+	id := newID(t, "A")
+	wantError(t, tess(t, "tree", id, "--json"), "invalid_argument")
+	for _, args := range [][]string{{}, {"--help"}, {"show", "--help"}} {
+		if r := tess(t, args...); strings.Contains(r.stdout, "tess tree") || strings.Contains(r.stdout, "\n  tree ") {
+			t.Errorf("tess %v still names the tree command:\n%s", args, r.stdout)
+		}
+	}
+	if strings.Contains(string(skillText), "tess tree") {
+		t.Errorf("the skill still names `tess tree`")
+	}
+	if !strings.Contains(string(skillText), "--tree") {
+		t.Errorf("the skill doesn't mention `tess show ID --tree`")
+	}
+}
+
+func TestShowFieldPrintsOneFieldRaw(t *testing.T) {
+	inInitialisedRepo(t)
+	blocker := newID(t, "Blocker")
+	id := newID(t, "Full", "-t", "bug", "-p", "0", "--notes", "Seen twice\n\nand again", "-d", "ends in a newline\n",
+		"-l", "ui", "-l", "auth", "-b", blocker)
+	for _, tc := range []struct {
+		field, plain, json string
+	}{
+		// Text fields exactly as stored: no newline added, none taken away.
+		{"notes", "Seen twice\n\nand again", `"Seen twice\n\nand again"` + "\n"},
+		{"description", "ends in a newline\n", `"ends in a newline\n"` + "\n"},
+		{"design", "", `""` + "\n"},
+		// Scalars on one line.
+		{"title", "Full\n", `"Full"` + "\n"},
+		{"priority", "0\n", "0\n"},
+		{"blocked", "true\n", "true\n"},
+		{"status", "waiting\n", `"waiting"` + "\n"},
+		{"created_at", "2026-01-01T00:00:00Z\n", `"2026-01-01T00:00:00Z"` + "\n"},
+		// null as nothing at all.
+		{"assignee", "", "null\n"},
+		{"previous_status", "", "null\n"},
+		// A list of plain values, one to a line.
+		{"labels", "auth\nui\n", `["auth","ui"]` + "\n"},
+		{"ancestors", "", "[]\n"},
+	} {
+		if r := tess(t, "show", id, "--field", tc.field); r.code != 0 || r.stdout != tc.plain {
+			t.Errorf("--field %s: exit %d (%s), stdout %q, want %q", tc.field, r.code, r.stderr, r.stdout, tc.plain)
+		}
+		if r := tess(t, "show", id, "--field", tc.field, "--json"); r.code != 0 || r.stdout != tc.json {
+			t.Errorf("--field %s --json: exit %d (%s), stdout %q, want %q", tc.field, r.code, r.stderr, r.stdout, tc.json)
+		}
+	}
+}
+
+func TestShowFieldReachesEveryKeyOfTheIssueObject(t *testing.T) {
+	inInitialisedRepo(t)
+	blocker := newID(t, "Blocker")
+	id := newID(t, "Full", "-b", blocker)
+	tess(t, "update", id, "--title", "Fuller")
+
+	links := ok[object](t, "show", id, "--field", "links")
+	if !reflect.DeepEqual(links["blocked_by"], []any{blocker}) {
+		t.Errorf("--field links is %v", links)
+	}
+	// history and tree are keys too, and asking for one loads it.
+	history := ok[[]any](t, "show", id, "--field", "history")
+	if len(history) != 1 || history[0].(object)["attr"] != "title" {
+		t.Errorf("--field history is %v", history)
+	}
+	tree := ok[object](t, "show", id, "--field", "tree")
+	if tree["id"] != id || len(tree["blocked_by"].([]any)) != 1 {
+		t.Errorf("--field tree is %v", tree)
+	}
+	// In plain mode a value with structure is printed as JSON.
+	r := tess(t, "show", id, "--field", "links")
+	if got := decode[object](t, r.stdout); !reflect.DeepEqual(got, links) {
+		t.Errorf("plain --field links is %q", r.stdout)
+	}
+}
+
+func TestShowFieldRefusals(t *testing.T) {
+	inInitialisedRepo(t)
+	a, b := newID(t, "A"), newID(t, "B")
+	unknown := wantError(t, tess(t, "show", a, "--field", "nope", "--json"), "invalid_argument")
+	if hint, _ := unknown["hint"].(string); !strings.Contains(hint, "acceptance_criteria") {
+		t.Errorf("the hint doesn't list the fields: %v", unknown["hint"])
+	}
+	wantError(t, tess(t, "show", a, b, "--field", "notes", "--json"), "invalid_argument")
+	wantError(t, tess(t, "show", a, "--field", "", "--json"), "invalid_argument")
+	wantError(t, tess(t, "show", "t-zzzzzzzz", "--field", "notes", "--json"), "not_found")
+}

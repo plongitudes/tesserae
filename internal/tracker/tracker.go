@@ -23,7 +23,8 @@ import (
 type (
 	// Issue is the issue object of acceptance/README.md. Status is the
 	// displayed status. Links, Comments and PreviousStatus are set by Get,
-	// History by Get with WithHistory; elsewhere they are nil.
+	// History by Get with WithHistory, Tree by Get with WithTree; elsewhere
+	// they are nil.
 	Issue   = sqlite.Issue
 	Links   = sqlite.Links
 	Comment = sqlite.Comment
@@ -111,17 +112,22 @@ type Patch struct {
 // GetOption asks Get for more than the issue and its detail.
 type GetOption func(*getOptions)
 
-type getOptions struct{ history bool }
+type getOptions struct{ history, tree bool }
 
 // WithHistory adds the issue's events, oldest first.
 func WithHistory() GetOption { return func(o *getOptions) { o.history = true } }
+
+// WithTree adds the dependency tree below the issue: its children and the
+// issues it is blocked by, and theirs in turn.
+func WithTree() GetOption { return func(o *getOptions) { o.tree = true } }
 
 // Tracker is the interface every command goes through.
 type Tracker interface {
 	// Create adds an issue, allocating its ID in the same transaction.
 	Create(ctx context.Context, n NewIssue) (Issue, error)
 	// Get resolves a partial ID and returns the issue with its links,
-	// comments, and, for a held issue, its previous status.
+	// comments, and, for a held issue, its previous status; and with
+	// WithHistory and WithTree, its history and the tree below it.
 	Get(ctx context.Context, partialID string, opts ...GetOption) (Issue, error)
 	// Update applies a patch, logging an event for each field that changed.
 	Update(ctx context.Context, partialID string, p Patch) (Issue, error)
@@ -139,9 +145,6 @@ type Tracker interface {
 	// Unlink removes the link `a WORDING b` for every pair, all of them or
 	// none, and returns the links removed.
 	Unlink(ctx context.Context, left []string, wording string, right []string) ([]Link, error)
-	// Tree returns the dependency tree below an issue: its children and the
-	// issues it is blocked by, and theirs in turn.
-	Tree(ctx context.Context, partialID string) (TreeNode, error)
 	// Retire hides each issue named, all of them or none, and reports the
 	// issues that are no longer blocked because of it. A reason, if given,
 	// is kept as a comment on each.
@@ -270,7 +273,12 @@ func (t *tracker) Get(ctx context.Context, partialID string, opts ...GetOption) 
 			return err
 		}
 		if o.history {
-			return sqlite.LoadHistory(ctx, tx, &issue)
+			if err := sqlite.LoadHistory(ctx, tx, &issue); err != nil {
+				return err
+			}
+		}
+		if o.tree {
+			return sqlite.LoadTree(ctx, tx, &issue)
 		}
 		return nil
 	})

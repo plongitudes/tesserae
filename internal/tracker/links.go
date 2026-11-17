@@ -278,23 +278,3 @@ func cycleError(l Link) error {
 	}
 	return e
 }
-
-func (t *tracker) Tree(ctx context.Context, partialID string) (TreeNode, error) {
-	var root TreeNode
-	err := t.store.Read(ctx, func(tx *sql.Tx) error {
-		id, _, err := resolve(ctx, tx, partialID)
-		if err != nil {
-			return err
-		}
-		node, ok, err := sqlite.Tree(ctx, tx, id)
-		if err == nil && !ok {
-			err = fmt.Errorf("issue %s is missing", id)
-		}
-		root = node
-		return err
-	})
-	if err != nil {
-		return TreeNode{}, err
-	}
-	return root, nil
-}

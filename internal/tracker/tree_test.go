@@ -3,6 +3,7 @@ package tracker_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/plongitudes/tesserae/internal/tracker"
@@ -10,11 +11,14 @@ import (
 
 func (f *fixture) tree(id string) tracker.TreeNode {
 	f.t.Helper()
-	n, err := f.tr.Tree(f.ctx, id)
+	issue, err := f.tr.Get(f.ctx, id, tracker.WithTree())
 	if err != nil {
-		f.t.Fatalf("Tree(%q): %v", id, err)
+		f.t.Fatalf("Get(%q, WithTree): %v", id, err)
 	}
-	return n
+	if issue.Tree == nil {
+		f.t.Fatalf("Get(%q, WithTree) has no tree", id)
+	}
+	return *issue.Tree
 }
 
 // leaf is a tree node with nothing under it.
@@ -131,6 +135,34 @@ func TestTreeShowsFinishedIssuesAndLeavesOutRetiredOnes(t *testing.T) {
 func TestTreeRefusesAnUnknownID(t *testing.T) {
 	f := newFixture(t)
 	f.titled("A")
-	_, err := f.tr.Tree(f.ctx, "t-zzzzzzzz")
+	_, err := f.tr.Get(f.ctx, "t-zzzzzzzz", tracker.WithTree())
 	wantCode(t, err, tracker.CodeNotFound)
+}
+
+func TestTheTreeIsOnlyOnAnIssueWhenAskedFor(t *testing.T) {
+	f := newFixture(t)
+	a := f.titled("Alone")
+	issue, err := f.tr.Get(f.ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issue.Tree != nil {
+		t.Errorf("Get without WithTree has a tree: %v", issue.Tree)
+	}
+	b, err := json.Marshal(issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), `"tree"`) {
+		t.Errorf("the issue's JSON has a tree key without WithTree: %s", b)
+	}
+
+	// With it, the tree sits beside the history and the rest of the issue.
+	issue, err = f.tr.Get(f.ctx, a, tracker.WithTree(), tracker.WithHistory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issue.Tree == nil || issue.Tree.ID != a || issue.History == nil || issue.Links == nil {
+		t.Errorf("Get with both options: tree %v, history %v, links %v", issue.Tree, issue.History, issue.Links)
+	}
 }

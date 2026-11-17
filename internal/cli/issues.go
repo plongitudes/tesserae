@@ -136,24 +136,53 @@ With --json the whole issue is printed.`,
 }
 
 func (a *app) showCommand() *cobra.Command {
-	var history bool
+	var (
+		history, tree bool
+		field         string
+	)
 	cmd := &cobra.Command{
 		Use:   "show ID...",
 		Short: "Show issues in full, with their links and comments",
 		Long: `Show issues in full, with their links and comments.
 
 With --json, one ID prints one issue object and several print an array, in
-the order asked. A retired issue can be shown by its exact ID.`,
+the order asked. A retired issue can be shown by its exact ID.
+
+--tree adds what hangs off the issue: its children and the issues that block
+it, nested, and theirs in turn ("tree" in the JSON).
+
+--field F takes one ID and prints that field alone, raw: a text exactly as
+stored, with no newline added; a number, a date or a status on one line; a
+list one value to a line; and nothing at all for a field that is not set.
+With --json it prints the field's value as JSON. F is any key of the issue
+object, as --json prints it.`,
 		Example: `  tess show api-7kq
   tess show 7kq                  # any part of an ID that names one issue
   tess show api-7kq api-m2x
   tess show api-7kq --history    # every change, oldest first
+  tess show api-7kq --tree       # with its children and blockers, nested
+  tess show api-7kq --field notes > notes.md
+  tess show api-7kq --field labels --json
   tess show api-7kq --json`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
+			one := cmd.Flags().Changed("field")
+			if one {
+				if len(args) != 1 {
+					return invalidArgument(
+						fmt.Sprintf("--field takes one issue, and got %d", len(args)),
+						"as in `tess show ID --field notes`")
+				}
+				if err := checkField(field); err != nil {
+					return err
+				}
+			}
 			var opts []tracker.GetOption
-			if history {
+			if history || field == "history" {
 				opts = append(opts, tracker.WithHistory())
+			}
+			if tree || field == "tree" {
+				opts = append(opts, tracker.WithTree())
 			}
 			ctx := cmd.Context()
 			return withTracker(ctx, func(tr tracker.Tracker) error {
@@ -164,6 +193,9 @@ the order asked. A retired issue can be shown by its exact ID.`,
 						return err
 					}
 					issues = append(issues, issue)
+				}
+				if one {
+					return a.printField(issues[0], field)
 				}
 				// One ID is one issue object; several are an array of them.
 				var result any = issues
@@ -182,6 +214,8 @@ the order asked. A retired issue can be shown by its exact ID.`,
 		}),
 	}
 	cmd.Flags().BoolVar(&history, "history", false, "add the issue's history: every change, oldest first")
+	cmd.Flags().BoolVar(&tree, "tree", false, "add the issue's children and blockers, nested, and theirs")
+	cmd.Flags().StringVar(&field, "field", "", "print one field's raw value (one ID): any key of the issue object")
 	return cmd
 }
 

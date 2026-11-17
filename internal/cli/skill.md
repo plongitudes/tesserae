@@ -33,14 +33,14 @@ tess is this repository's issue tracker. The issues are in one database that eve
 ## JSON fields
 
 - An issue: `id`, `title`, `description`, `design`, `acceptance_criteria`, `notes`, `type`, `priority` (0 is most urgent, 4 least), `status`, `status_reason`, `blocked`, `assignee`, `owner`, `labels`, `parent`, `ancestors` (nearest first), `due_at`, `created_at`, `created_by`, `updated_at`, `retired_at`.
-- `tess show` adds `links` (`blocks`, `blocked_by`, `children`, `related`, `discovered_from`, `discovered`, each a list of IDs) and `comments`; `--history` adds `history`.
+- `tess show` adds `links` (`blocks`, `blocked_by`, `children`, `related`, `discovered_from`, `discovered`, each a list of IDs) and `comments`; `--history` adds `history`, and `--tree` adds `tree` (nested `id`, `title`, `status`, `children`, `blocked_by`). `tess show ID --field notes` prints one field raw.
 - `tess list` and `tess ready` print an array of issues. `tess status` and `tess retire` print `{"updated": [...], "newly_unblocked": [...]}`; `newly_unblocked` is what can start now.
 - An error is `{"error": {"code", "message", "hint"}}` on stderr with exit status 1. The `code` is stable, and the `hint` says what to try.
 
 ## Finding things
 
 - `tess list --status waiting`, `--blocked`, `--label L`, `--assignee A`, `--parent ID`, `-s TEXT`; `--all` includes done and omitted issues.
-- `tess tree ID` shows an issue's children and blockers.
+- `tess show ID --tree` adds the issue's children and blockers, nested, and theirs.
 - `tess show ID --history` lists every change to an issue and who made it.
 - IDs can be shortened to any part that is unique: `tess show 3kq`.
 - Text flags take `-` to read stdin: `tess update ID --notes - < notes.md`.

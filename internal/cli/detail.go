@@ -15,7 +15,8 @@ func stamp(at time.Time) string { return at.UTC().Format(time.RFC3339) }
 
 // writeDetail writes an issue in full for a person: its list line, its
 // fields, its texts, and whatever of its links, comments and history are
-// loaded. With the history, the comments are shown in it, where they fall. Empty optional values are left out.
+// loaded. With the history, the comments are shown in it, where they fall;
+// with the tree, it comes last. Empty optional values are left out.
 func writeDetail(w io.Writer, issue tracker.Issue) {
 	writeLine(w, issue)
 
@@ -85,6 +86,18 @@ func writeDetail(w io.Writer, issue tracker.Issue) {
 			fmt.Fprintf(w, "    %s\n", line)
 		}
 	}
+	// The tree is nil unless it was asked for. The issue is its root and is
+	// already printed, so what hangs off it comes one step in.
+	if tree := issue.Tree; tree != nil {
+		defer func() {
+			fmt.Fprintln(w, "\nTree:")
+			if len(tree.BlockedBy)+len(tree.Children) == 0 {
+				fmt.Fprintln(w, "  no children or blockers")
+			}
+			writeTreeUnder(w, *tree, "  ")
+		}()
+	}
+
 	// History is nil unless it was asked for, and empty for a new issue.
 	if issue.History == nil {
 		if len(issue.Comments) > 0 {
