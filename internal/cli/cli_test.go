@@ -392,3 +392,108 @@ func TestAnEmptyListIsAnEmptyJSONArray(t *testing.T) {
 		t.Errorf("exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
 	}
 }
+
+// A command-line error says how the command is written (cli.md, Output):
+// the error, the use line, and where the examples are; no hint line.
+func TestCommandLineErrorsPrintUsageAndNoHint(t *testing.T) {
+	inInitialisedRepo(t)
+	id := strings.TrimSpace(tess(t, "create", "An issue").stdout)
+	for name, tc := range map[string]struct {
+		args  []string
+		usage string // the use line
+		help  string // the command whose --help is named
+	}{
+		"wrong number of arguments":     {[]string{"create"}, "tess create TITLE [flags]", "tess create"},
+		"cobra's own argument count":    {[]string{"comment", id}, "tess comment ID TEXT [flags]", "tess comment"},
+		"no link type":                  {[]string{"link", id}, "tess link A TYPE B [flags]", "tess link"},
+		"unknown link type":             {[]string{"unlink", id, "duplicates", id}, "tess unlink A TYPE B [flags]", "tess unlink"},
+		"status without a status":       {[]string{"status", id}, "tess status ID... STATUS [flags]", "tess status"},
+		"unknown flag":                  {[]string{"list", "--frobnicate"}, "tess list [flags]", "tess list"},
+		"flag without its value":        {[]string{"list", "-n"}, "tess list [flags]", "tess list"},
+		"bad flag value, by cobra":      {[]string{"ready", "-n", "many"}, "tess ready [flags]", "tess ready"},
+		"bad flag value, by tess":       {[]string{"update", id, "--due", "tomorrow"}, "tess update ID [flags]", "tess update"},
+		"unknown field":                 {[]string{"show", id, "--field", "nope"}, "tess show ID... [flags]", "tess show"},
+		"--field with two issues":       {[]string{"show", id, id, "--field", "notes"}, "tess show ID... [flags]", "tess show"},
+		"flags that exclude each other": {[]string{"list", "--flat", "--tree"}, "tess list [flags]", "tess list"},
+		"nothing to change":             {[]string{"update", id}, "tess update ID [flags]", "tess update"},
+		"unknown command":               {[]string{"frobnicate"}, "tess [COMMAND] [flags]", "tess"},
+		"a command under a command":     {[]string{"setup", "cursor"}, "tess setup claude [flags]", "tess setup"},
+		"a subcommand's arguments":      {[]string{"setup", "claude", "extra"}, "tess setup claude [flags]", "tess setup claude"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := tess(t, tc.args...)
+			lines := strings.Split(strings.TrimSuffix(r.stderr, "\n"), "\n")
+			if r.code != 1 || r.stdout != "" || len(lines) < 3 {
+				t.Fatalf("exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
+			}
+			if !strings.HasPrefix(lines[0], "error: ") {
+				t.Errorf("first line is %q, want an error: line", lines[0])
+			}
+			tail := lines[len(lines)-2:]
+			if tail[0] != "usage: "+tc.usage {
+				t.Errorf("usage line is %q, want %q", tail[0], "usage: "+tc.usage)
+			}
+			if want := "run '" + tc.help + " --help' for examples"; tail[1] != want {
+				t.Errorf("last line is %q, want %q", tail[1], want)
+			}
+			if strings.Contains(r.stderr, "hint:") {
+				t.Errorf("a command-line error has a hint line: %q", r.stderr)
+			}
+
+			e := wantError(t, tess(t, append(tc.args, "--json")...), "invalid_argument")
+			if e["hint"] != tc.usage {
+				t.Errorf("JSON hint is %v, want the use line %q", e["hint"], tc.usage)
+			}
+		})
+	}
+}
+
+// What a hint used to carry and a use line can't (the fields, the link
+// types, the statuses) is in the message of a command-line error.
+func TestCommandLineErrorsNameTheValuesThatWouldWork(t *testing.T) {
+	inInitialisedRepo(t)
+	id := strings.TrimSpace(tess(t, "create", "An issue").stdout)
+	for name, tc := range map[string]struct {
+		args []string
+		want string
+	}{
+		"unknown field":     {[]string{"show", id, "--field", "nope"}, "acceptance_criteria"},
+		"unknown link type": {[]string{"link", id, "duplicates", id}, "discovered-from"},
+		"no link type":      {[]string{"link", id, id}, "blocked-by"},
+		"no status":         {[]string{"status", id}, "pending-review"},
+		"bad date":          {[]string{"update", id, "--due", "tomorrow"}, "2026-02-01"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := wantError(t, tess(t, append(tc.args, "--json")...), "invalid_argument")
+			if msg, _ := e["message"].(string); !strings.Contains(msg, tc.want) {
+				t.Errorf("message %q doesn't name %s", msg, tc.want)
+			}
+		})
+	}
+}
+
+// A refusal is not a command-line error, even when its code is
+// invalid_argument: it keeps its hint and prints no usage.
+func TestRefusalsKeepTheirHintAndPrintNoUsage(t *testing.T) {
+	inInitialisedRepo(t)
+	id := strings.TrimSpace(tess(t, "create", "An issue").stdout)
+	for name, args := range map[string][]string{
+		"not found":                {"show", "t-zzzzzzzz"},
+		"the tracker's own check":  {"update", id, "-p", "9"},
+		"a file that isn't there":  {"import", "missing.jsonl"},
+		"a status that needs more": {"status", id, "held"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := tess(t, args...)
+			if r.code != 1 || !strings.HasPrefix(r.stderr, "error: ") {
+				t.Fatalf("exit %d, stderr %q", r.code, r.stderr)
+			}
+			if !strings.Contains(r.stderr, "\nhint: ") {
+				t.Errorf("a refusal lost its hint: %q", r.stderr)
+			}
+			if strings.Contains(r.stderr, "usage:") || strings.Contains(r.stderr, "--help' for examples") {
+				t.Errorf("a refusal prints usage: %q", r.stderr)
+			}
+		})
+	}
+}

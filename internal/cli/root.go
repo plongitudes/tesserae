@@ -30,7 +30,7 @@ Run ` + "`tess COMMAND --help`" + ` for flags and examples.
 
 func (a *app) rootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "tess",
+		Use:   "tess [COMMAND]",
 		Short: "Issue tracker for a git repository",
 		Long: `Issue tracker for a git repository.
 

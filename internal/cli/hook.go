@@ -39,7 +39,7 @@ is nothing to say, and exit with status 0 whatever happens.`,
 		Example: `  echo '{"source":"startup"}' | tess hook session-start
   tess hook session-end`,
 		Args: func(cmd *cobra.Command, args []string) error {
-			return invalidArgument("hook takes the event it is run for", "session-start or session-end")
+			return usage("hook takes the event it is run for, session-start or session-end")
 		},
 		RunE: func(cmd *cobra.Command, args []string) error { return nil },
 	}

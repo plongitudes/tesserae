@@ -567,8 +567,8 @@ func TestShowFieldRefusals(t *testing.T) {
 	inInitialisedRepo(t)
 	a, b := newID(t, "A"), newID(t, "B")
 	unknown := wantError(t, tess(t, "show", a, "--field", "nope", "--json"), "invalid_argument")
-	if hint, _ := unknown["hint"].(string); !strings.Contains(hint, "acceptance_criteria") {
-		t.Errorf("the hint doesn't list the fields: %v", unknown["hint"])
+	if msg, _ := unknown["message"].(string); !strings.Contains(msg, "acceptance_criteria") {
+		t.Errorf("the message doesn't list the fields: %v", unknown["message"])
 	}
 	wantError(t, tess(t, "show", a, b, "--field", "notes", "--json"), "invalid_argument")
 	wantError(t, tess(t, "show", a, "--field", "", "--json"), "invalid_argument")

@@ -18,9 +18,7 @@ func (a *app) text(name, value string) (string, error) {
 		return value, nil
 	}
 	if a.stdinRead {
-		return "", invalidArgument(
-			fmt.Sprintf(`%s is "-", but stdin was already read for another one`, name),
-			`only one text can be "-" in a command; give the others as values`)
+		return "", usage(`%s is "-", but stdin was already read for another one; only one text in a command can be "-"`, name)
 	}
 	a.stdinRead = true
 	body, err := io.ReadAll(a.stdin)
@@ -88,9 +86,7 @@ With --json the whole issue is printed.`,
   tess create "Flaky upload test" -t bug --json`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
-				return invalidArgument(
-					fmt.Sprintf("create takes one title, and got %d arguments", len(args)),
-					`quote the title: tess create "Fix the login redirect"`)
+				return usage("create takes one title, quoted if it has spaces, and got %d arguments", len(args))
 			}
 			return nil
 		},
@@ -169,9 +165,7 @@ object, as --json prints it.`,
 			one := cmd.Flags().Changed("field")
 			if one {
 				if len(args) != 1 {
-					return invalidArgument(
-						fmt.Sprintf("--field takes one issue, and got %d", len(args)),
-						"as in `tess show ID --field notes`")
+					return usage("--field takes one issue, and got %d", len(args))
 				}
 				if err := checkField(field); err != nil {
 					return err
@@ -230,9 +224,7 @@ func parseDue(value string) (time.Time, error) {
 			return at.UTC(), nil
 		}
 	}
-	return time.Time{}, invalidArgument(
-		fmt.Sprintf("--due is %q, which is not a date", value),
-		`give a date like 2026-02-01, a time like 2026-02-01T09:00:00Z, or "" to clear it`)
+	return time.Time{}, usage(`--due is %q, which is not a date like 2026-02-01, a time like 2026-02-01T09:00:00Z, or "" to clear it`, value)
 }
 
 // updateFlags are the flags of update that name something to change.
@@ -277,8 +269,7 @@ given. It needs at least one of them, and does not apply to --title.`,
 				}
 			}
 			if fields == 0 {
-				return invalidArgument("update was given nothing to change",
-					"name a field, as in `tess update ID --title TEXT`; status changes go through `tess status`")
+				return usage("update was given nothing to change; name a field with a flag (a status is changed with `tess status`)")
 			}
 			// Only the flags that were given go into the patch.
 			for name, set := range map[string]func(){

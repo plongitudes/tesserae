@@ -97,7 +97,7 @@ under its ancestors; elsewhere the output is one line per issue.`,
 // always the flat array.
 func (a *app) list(ctx context.Context, filter tracker.Filter, l layout) error {
 	if l.flat && l.tree {
-		return invalidArgument("--flat and --tree can't both be given", "pick one; --json is always flat")
+		return usage("--flat and --tree can't both be given")
 	}
 	return withTracker(ctx, func(tr tracker.Tracker) error {
 		issues, err := tr.List(ctx, filter)

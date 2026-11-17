@@ -14,25 +14,24 @@ import (
 // splitLinkArgs splits `A... TYPE B...` at the link type: the issues before
 // it, the type, and the issues after it.
 func splitLinkArgs(name string, args []string) (left []string, wording string, right []string, err error) {
-	hint := "as in `tess " + name + " A blocks B`; link types: " + strings.Join(tracker.LinkWordings, ", ")
+	types := "the link types are " + strings.Join(tracker.LinkWordings, ", ")
 	at := -1
 	for i, arg := range args {
 		if !tracker.IsLinkWording(arg) {
 			continue
 		}
 		if at >= 0 {
-			return nil, "", nil, invalidArgument(
-				fmt.Sprintf("%s takes one link type, and got both %s and %s", name, args[at], arg), hint)
+			return nil, "", nil, usage("%s takes one link type, and got both %s and %s", name, args[at], arg)
 		}
 		at = i
 	}
 	switch {
 	case at < 0 && len(args) == 3:
-		return nil, "", nil, invalidArgument(fmt.Sprintf("unknown link type %q", args[1]), hint)
+		return nil, "", nil, usage("unknown link type %q; %s", args[1], types)
 	case at < 0:
-		return nil, "", nil, invalidArgument(name+" takes issues, a link type, and issues", hint)
+		return nil, "", nil, usage("%s takes issues, a link type, and issues; %s", name, types)
 	case at == 0 || at == len(args)-1:
-		return nil, "", nil, invalidArgument(name+" takes at least one issue on each side of "+args[at], hint)
+		return nil, "", nil, usage("%s takes at least one issue on each side of %s", name, args[at])
 	}
 	return args[:at], args[at], args[at+1:], nil
 }

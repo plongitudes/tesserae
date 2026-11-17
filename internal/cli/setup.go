@@ -355,7 +355,7 @@ Claude Code is the one agent there is a setup for; see tess setup claude --help.
   tess setup claude --check
   tess setup claude --remove`,
 		Args: func(cmd *cobra.Command, args []string) error {
-			return invalidArgument("setup takes what to set up", "as in `tess setup claude`")
+			return usage("setup takes what to set up")
 		},
 		RunE: func(cmd *cobra.Command, args []string) error { return nil },
 	}
@@ -384,7 +384,7 @@ unless a file is missing or out of date.`,
 		Args: cobra.NoArgs,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			if check && remove {
-				return invalidArgument("--check and --remove can't be used together", "")
+				return usage("--check and --remove can't be used together")
 			}
 			root, err := worktreeRoot(cmd.Context())
 			if err != nil {

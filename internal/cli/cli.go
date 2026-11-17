@@ -53,9 +53,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func (a *app) run(args []string) int {
 	root := a.rootCommand()
 	root.SetArgs(args)
-	if err := root.ExecuteContext(context.Background()); err != nil {
+	// The command comes back even on an error: the one that was run, or the
+	// one whose command line couldn't be read.
+	cmd, err := root.ExecuteContextC(context.Background())
+	if err != nil {
 		// A command line that failed to parse may not have reached --json.
-		a.printError(err, a.json || askedForJSON(args))
+		a.printError(err, cmd, a.json || askedForJSON(args))
 		return 1
 	}
 	return 0
@@ -85,13 +88,28 @@ func (f *failure) Unwrap() error { return f.err }
 // CodeInternal is the code of an error that is no one's refusal.
 const codeInternal = "internal"
 
-// action wraps a command's body so that every error leaving it is either a
-// refusal with a code or a failure.
+// usageError is a command-line error that tess itself finds: arguments or
+// flags that cobra let through but that don't make a command (cli.md,
+// Output). It is printed as cobra's own command-line errors are, with the
+// command's use line where a refusal has its hint.
+type usageError struct{ message string }
+
+func (u *usageError) Error() string { return u.message }
+
+// usage makes a command-line error. The message has to carry whatever the
+// use line can't say, such as the values a flag takes.
+func usage(format string, args ...any) error {
+	return &usageError{fmt.Sprintf(format, args...)}
+}
+
+// action wraps a command's body so that every error leaving it is a refusal
+// with a code, a command-line error, or a failure.
 func action(fn func(cmd *cobra.Command, args []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		err := fn(cmd, args)
 		var refusal *tracker.Error
-		if err == nil || errors.As(err, &refusal) {
+		var commandLine *usageError
+		if err == nil || errors.As(err, &refusal) || errors.As(err, &commandLine) {
 			return err
 		}
 		return &failure{err}
@@ -110,39 +128,52 @@ type errorBody struct {
 }
 
 // printError writes err to stderr: the envelope with --json, and otherwise
-// an `error:` line, with the hint on a line of its own.
-func (a *app) printError(err error, asJSON bool) {
-	refusal := classify(err)
-	if asJSON {
+// an `error:` line followed by one of two things (cli.md, Output). A
+// refusal has its hint, the next command to try. A command-line error has
+// the use line of cmd, the command it was made for, and where that
+// command's examples are; in the envelope the use line is the hint.
+func (a *app) printError(err error, cmd *cobra.Command, asJSON bool) {
+	refusal, commandLine := classify(err)
+	if commandLine {
+		refusal.Hint = cmd.UseLine()
+	}
+	switch {
+	case asJSON:
 		body := errorBody{Code: refusal.Code, Message: refusal.Message}
 		if refusal.Hint != "" {
 			body.Hint = &refusal.Hint
 		}
 		writeJSON(a.stderr, envelope{body})
-		return
-	}
-	fmt.Fprintf(a.stderr, "error: %s\n", refusal.Message)
-	if refusal.Hint != "" {
-		fmt.Fprintf(a.stderr, "hint: %s\n", refusal.Hint)
+	case commandLine:
+		fmt.Fprintf(a.stderr, "error: %s\nusage: %s\nrun '%s --help' for examples\n",
+			refusal.Message, refusal.Hint, cmd.CommandPath())
+	default:
+		fmt.Fprintf(a.stderr, "error: %s\n", refusal.Message)
+		if refusal.Hint != "" {
+			fmt.Fprintf(a.stderr, "hint: %s\n", refusal.Hint)
+		}
 	}
 }
 
-// classify gives every error a code. Refusals carry their own; a failure is
-// internal; anything else was made by cobra while reading the command line
-// (an unknown command or flag, a bad flag value, the wrong number of
-// arguments), which is invalid_argument.
-func classify(err error) *tracker.Error {
-	var refusal *tracker.Error
+// classify gives every error a code, and says whether it is a command-line
+// error. Refusals carry their own code; a failure is internal. Anything
+// else is a command-line error, which is invalid_argument: a usageError, or
+// an error cobra made while reading the command line (an unknown command or
+// flag, a bad flag value, the wrong number of arguments).
+func classify(err error) (refusal *tracker.Error, commandLine bool) {
 	if errors.As(err, &refusal) {
-		return refusal
+		// A copy: the caller may fill in the hint.
+		return &tracker.Error{Code: refusal.Code, Message: refusal.Message, Hint: refusal.Hint}, false
 	}
 	var f *failure
 	if errors.As(err, &f) {
-		return &tracker.Error{Code: codeInternal, Message: err.Error()}
+		return &tracker.Error{Code: codeInternal, Message: err.Error()}, false
 	}
-	return invalidArgument(err.Error(), "run `tess --help` for the commands, or `tess COMMAND --help` for one command's flags")
+	return &tracker.Error{Code: tracker.CodeInvalidArgument, Message: err.Error()}, true
 }
 
+// invalidArgument is a refusal the CLI makes itself, for something wrong
+// that the command's use line wouldn't help with: the environment, a file.
 func invalidArgument(message, hint string) *tracker.Error {
 	return &tracker.Error{Code: tracker.CodeInvalidArgument, Message: message, Hint: hint}
 }

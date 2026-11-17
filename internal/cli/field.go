@@ -32,9 +32,7 @@ func checkField(field string) error {
 	if slices.Contains(issueFields, field) {
 		return nil
 	}
-	return invalidArgument(
-		fmt.Sprintf("an issue has no field %q", field),
-		"fields: "+strings.Join(issueFields, ", "))
+	return usage("an issue has no field %q; the fields are %s", field, strings.Join(issueFields, ", "))
 }
 
 // printField writes one field of an issue (acceptance/README.md, "Issue

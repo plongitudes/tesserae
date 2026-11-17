@@ -69,9 +69,7 @@ and its reason is changed. Several IDs are changed together or not at all.`,
   tess status api-7kq done --json`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 2 {
-				return invalidArgument(
-					"status takes one or more IDs and then a status",
-					"as in `tess status ID in-progress`; statuses: "+strings.Join(tracker.Statuses, ", "))
+				return usage("status takes one or more IDs and then a status: %s", strings.Join(tracker.Statuses, ", "))
 			}
 			return nil
 		},
