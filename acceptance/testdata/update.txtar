@@ -22,6 +22,21 @@ json stdout .acceptance_criteria 'ready stays fast'
 exec tess update $A --add-label b --add-label a --remove-label keep --json
 json stdout .labels '["a","b"]'
 
+# --append adds a paragraph: old text, one blank line, new text verbatim.
+exec tess update $A --notes 'Second' --append --json
+json stdout .notes '"Line\n\nSecond"'
+stdin notes.txt
+exec tess update $A --notes - --append --json
+json stdout .notes '"Line\n\nSecond\n\nLine\n"'
+# An empty field just takes the text.
+exec tess update $A -d 'First' --append --json
+json stdout .description First
+# --append needs a text flag and never applies to the title.
+! exec tess update $A --append --json
+json stderr .error.code invalid_argument
+! exec tess update $A --title 'More' --append --json
+json stderr .error.code invalid_argument
+
 # Clearing optional fields.
 exec tess update $A -a '' --due '' --json
 json stdout .assignee null

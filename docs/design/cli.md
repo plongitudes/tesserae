@@ -23,11 +23,15 @@ tess create TITLE [flags]              create an issue; prints its ID
     -a, --assignee NAME
 
 tess show ID...                        full detail incl. dependencies and comments
-tess ready [-n N]                      issues with status ready, priority order (default N=10)
+    --history                          add every change, oldest first (ADR-0013)
+    --tree                             add the issue's children and blockers, nested, and theirs
+    --field F                          print one field's raw value (one ID); agents pipe it to a file
+tess ready [-n N]                      issues with status ready, priority order (default N=10);
+                                       on a TTY with no results, says so on stderr (silent when piped)
 tess list [filters]                    everything else
     --status S, --type T, --label L, --assignee A, --parent ID (descendants)
     --blocked                          blocked issues of any status, with their blockers
-    -s, --search TEXT                  title/description/notes substring
+    -s, --search TEXT                  id/title/description/notes substring
     --all                              include done/omit (default: excluded; retired never shown)
     --retired                          only retired issues
 
@@ -35,6 +39,7 @@ tess update ID [flags]                 any non-status field
     --title, -t/--type, -p/--priority, -d/--description, --design, --acceptance, --notes,
     -a/--assignee, --owner, --due DATE, --add-label L, --remove-label L
                                        text flags take "-" for stdin; an empty value clears a field
+    --append                           text flags add a paragraph to the field instead of replacing it
 tess status ID... STATUS [-r REASON]   ready | in-progress | pending-review | held | done | omit
                                        (ADR-0018). held/omit need -r. done refuses if blocked unless
                                        --force; done/omit refuse with open children. Prints issues
@@ -47,15 +52,17 @@ tess link B blocked-by A               same link, inverse wording
 tess link A parent-of B                (or: B child-of A)
 tess link A related B
 tess link B discovered-from A          B was found while working on A
-tess unlink A TYPE B
-tess tree ID                           dependency tree around an issue
+tess link A B C blocks D E             several IDs on either side: the link type splits them,
+                                       and every pair on the left × right becomes a link
+tess unlink A TYPE B                   same forms as link
 
 tess comment ID TEXT                   or "-" to read stdin
 tess import PATH                       old bd issues.jsonl
 tess sync                              fetch, merge, push the sync ref (ADR-0012)
 tess setup claude [--check|--remove]   write the Claude Code skill + hooks (ADR-0019)
 tess hook session-start|session-end    plumbing called by those hooks; not shown in orientation
-tess                                   no arguments: ~10 lines of orientation
+tess                                   no arguments: orientation, one line per working command
+                                       (everything above except init, import, setup, hook)
 ```
 
 `tess hook` is what `setup claude` installs in `.claude/settings.json`: `SessionStart` (matcher `startup|resume|compact`) runs `tess hook session-start`, which reads the hook's JSON from stdin, runs `tess sync` with a short timeout unless `source` is `compact`, then prints 3–6 lines of facts (ready count, in-progress count, last sync) and never instructions; it prints nothing when the repo has no database and always exits 0. `SessionEnd` runs `tess hook session-end`, which starts a detached `tess sync` and exits at once. Both commands are wrapped so a missing `tess` binary fails quietly (ADR-0019, scope notes). In loop 1, where `sync` is a stub, `session-start` skips the sync and `session-end` does nothing.
@@ -76,6 +83,8 @@ Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), 
 - `--json` on every command. Issues are objects with snake_case fields; lists are arrays; mutating commands return the affected issue(s), and `status`/`retire` return `{"updated": [...], "newly_unblocked": [...]}`. `status` is the displayed status (incl. derived `waiting`/`ready`), plus a `blocked` boolean. Exact shapes: [acceptance/README.md](../../acceptance/README.md).
 - Every `--help` has examples. Short factual notes may go to stderr when true (e.g. unsynced changes), never on every command.
 - Errors go to stderr. With `--json`, stderr is `{"error": {"code": "...", "message": "...", "hint": "..."}}` and `code` is stable (`not_found`, `ambiguous_id`, `cycle`, `retired`, ...). Exit status is non-zero.
+- Two kinds of error, two shapes in plain mode. A command-line error (wrong number of arguments, unknown command or flag, bad flag value; code `invalid_argument`) prints `error: ...`, then `usage: tess link A TYPE B` (the command's use line), then `run 'tess link --help' for examples`; in JSON the `hint` is the use line. A refusal from the tracker (`not_found`, `cycle`, `blocked`, ...) prints `error: ...` and a `hint:` naming the next command to try. Usage for syntax, hints for next steps, as git and cargo do.
+- `tess ready` on a TTY with no results prints `no ready issues` and a hint on stderr; when piped it prints nothing, so pipelines stay clean.
 - Partial IDs are accepted everywhere an ID is.
 - Lists (`ready`, `list`) are hierarchical by default on a TTY: each issue appears under its ancestors, which show as dimmed section headers (context, not results), children indented. `--flat` gives one line per issue with no headers, and is the default when stdout isn't a TTY, so `grep`/`awk` pipelines just work; `--tree` forces the hierarchy. `-n` counts results, not headers. Results sort by priority within each group; groups sort by their best result.
 - `--json` is always a flat array; each issue carries `parent` (and `ancestors`), and nesting is left to the consumer.
@@ -89,3 +98,6 @@ Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), 
 ## Notes
 
 - Status changes go through `tess status` only, not `update` ([ADR-0018](../adr/0018-one-status-command.md)). `waiting` can't be set; it's how `ready` displays when blocked.
+- `--tree` means the same thing on `list` and `show`: place the issue in its hierarchy. `list --tree` puts results under their ancestors; `show --tree` prints the issue (whose `ancestors` it already lists) and then what hangs off it, children and blockers, nested. There is no separate `tree` command (dogfood checkpoint, 2026-11-16).
+- A `blocks` link between an issue and its own ancestor or descendant is refused with code `cycle` in both directions ([ADR-0016](../adr/0016-hierarchy-rules.md)): a child already holds its parent, and a blocked ancestor blocks its descendants, so either direction is a dependency the issue could never satisfy.
+- `show --field F` prints the raw value: text exactly as stored, scalars plainly, `null` as nothing; with `--json`, the value as JSON. `F` is any key of the issue object, so `tess show ID --field notes > notes.md` and `tess update ID --notes - --append < more.md` round-trip without re-sending.

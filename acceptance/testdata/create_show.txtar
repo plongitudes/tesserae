@@ -33,6 +33,22 @@ json stdout .notes 'Seen twice'
 json stdout .labels '["auth","ui"]'
 json stdout .assignee alice
 
+# One field, raw: text exactly as stored, scalars on a line, null as nothing.
+exec tess show $B --field notes
+stdout '^Seen twice$'
+exec tess show $B --field priority
+stdout '^0$'
+exec tess show $A --field assignee
+! stdout .
+exec tess show $B --field notes --json
+stdout '^"Seen twice"$'
+exec tess show $B --field labels --json
+json stdout . '["auth","ui"]'
+! exec tess show $B --field nope --json
+json stderr .error.code invalid_argument
+! exec tess show $A $B --field notes --json
+json stderr .error.code invalid_argument
+
 # Description from stdin.
 stdin desc.txt
 exec tess create 'From stdin' -d - --json
