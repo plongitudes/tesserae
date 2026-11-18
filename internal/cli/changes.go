@@ -41,7 +41,7 @@ func (a *app) statusCommand() *cobra.Command {
 		force  bool
 	)
 	cmd := &cobra.Command{
-		Use:   "status ID... STATUS",
+		Use:   "status ID... STATUS [-r REASON] [--force]",
 		Short: "Set the status of issues; prints the issues newly unblocked",
 		Long: `Set the status of issues; prints the issues newly unblocked.
 
@@ -100,7 +100,7 @@ and its reason is changed. Several IDs are changed together or not at all.`,
 			})
 		}),
 	}
-	cmd.Flags().StringVarP(&reason, "reason", "r", "", "why; held and omit need one")
+	cmd.Flags().StringVarP(&reason, "reason", "r", "", "the `REASON` for the change; held and omit need one")
 	cmd.Flags().BoolVar(&force, "force", false, "mark a blocked issue done anyway")
 	return cmd
 }
@@ -108,7 +108,7 @@ and its reason is changed. Several IDs are changed together or not at all.`,
 func (a *app) retireCommand() *cobra.Command {
 	var reason string
 	cmd := &cobra.Command{
-		Use:   "retire ID...",
+		Use:   "retire ID... [-r REASON]",
 		Short: "Hide issues permanently; prints the issues newly unblocked",
 		Long: `Hide issues permanently; prints the issues newly unblocked.
 
@@ -136,7 +136,7 @@ ID omit instead.`,
 			})
 		}),
 	}
-	cmd.Flags().StringVarP(&reason, "reason", "r", "", "why; kept as a comment on each issue")
+	cmd.Flags().StringVarP(&reason, "reason", "r", "", "the `REASON` for retiring; kept as a comment on each issue")
 	return cmd
 }
 

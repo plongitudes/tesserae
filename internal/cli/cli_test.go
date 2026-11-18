@@ -400,25 +400,27 @@ func TestCommandLineErrorsPrintUsageAndNoHint(t *testing.T) {
 	id := strings.TrimSpace(tess(t, "create", "An issue").stdout)
 	for name, tc := range map[string]struct {
 		args  []string
-		usage string // the use line
+		usage string // the synopsis, as it follows "usage: "
 		help  string // the command whose --help is named
 	}{
-		"wrong number of arguments":     {[]string{"create"}, "tess create TITLE [flags]", "tess create"},
-		"cobra's own argument count":    {[]string{"comment", id}, "tess comment ID TEXT [flags]", "tess comment"},
-		"no link type":                  {[]string{"link", id}, "tess link A TYPE B [flags]", "tess link"},
-		"unknown link type":             {[]string{"unlink", id, "duplicates", id}, "tess unlink A TYPE B [flags]", "tess unlink"},
-		"status without a status":       {[]string{"status", id}, "tess status ID... STATUS [flags]", "tess status"},
-		"unknown flag":                  {[]string{"list", "--frobnicate"}, "tess list [flags]", "tess list"},
-		"flag without its value":        {[]string{"list", "-n"}, "tess list [flags]", "tess list"},
-		"bad flag value, by cobra":      {[]string{"ready", "-n", "many"}, "tess ready [flags]", "tess ready"},
-		"bad flag value, by tess":       {[]string{"update", id, "--due", "tomorrow"}, "tess update ID [flags]", "tess update"},
-		"unknown field":                 {[]string{"show", id, "--field", "nope"}, "tess show ID... [flags]", "tess show"},
-		"--field with two issues":       {[]string{"show", id, id, "--field", "notes"}, "tess show ID... [flags]", "tess show"},
-		"flags that exclude each other": {[]string{"list", "--flat", "--tree"}, "tess list [flags]", "tess list"},
-		"nothing to change":             {[]string{"update", id}, "tess update ID [flags]", "tess update"},
-		"unknown command":               {[]string{"frobnicate"}, "tess [COMMAND] [flags]", "tess"},
-		"a command under a command":     {[]string{"setup", "cursor"}, "tess setup claude [flags]", "tess setup"},
-		"a subcommand's arguments":      {[]string{"setup", "claude", "extra"}, "tess setup claude [flags]", "tess setup claude"},
+		"wrong number of arguments":     {[]string{"create"}, "tess create TITLE [-t TYPE] [-p N] [-l LABEL]... [--parent ID] [-b ID]... [-a NAME] [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT]", "tess create"},
+		"cobra's own argument count":    {[]string{"comment", id}, "tess comment ID TEXT", "tess comment"},
+		"no link type":                  {[]string{"link", id}, "tess link ID... TYPE ID...", "tess link"},
+		"unknown link type":             {[]string{"unlink", id, "duplicates", id}, "tess unlink ID... TYPE ID...", "tess unlink"},
+		"status without a status":       {[]string{"status", id}, "tess status ID... STATUS [-r REASON] [--force]", "tess status"},
+		"unknown flag":                  {[]string{"list", "--frobnicate"}, "tess list [--status STATUS] [--type TYPE] [--label LABEL] [--assignee NAME] [--parent ID] [--blocked] [-s TEXT] [--all] [--retired] [-n N] [--flat|--tree]", "tess list"},
+		"flag without its value":        {[]string{"list", "-n"}, "tess list [--status STATUS] [--type TYPE] [--label LABEL] [--assignee NAME] [--parent ID] [--blocked] [-s TEXT] [--all] [--retired] [-n N] [--flat|--tree]", "tess list"},
+		"bad flag value, by cobra":      {[]string{"ready", "-n", "many"}, "tess ready [-n N] [--flat|--tree]", "tess ready"},
+		"bad flag value, by tess":       {[]string{"update", id, "--due", "tomorrow"}, "tess update ID [--title TITLE] [-t TYPE] [-p N] [-a NAME] [--owner NAME] [--due DATE] [--add-label LABEL]... [--remove-label LABEL]... [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT] [--append]", "tess update"},
+		"unknown field":                 {[]string{"show", id, "--field", "nope"}, "tess show ID... [--history] [--tree]\n   or: tess show ID --field FIELD", "tess show"},
+		"--field with two issues":       {[]string{"show", id, id, "--field", "notes"}, "tess show ID... [--history] [--tree]\n   or: tess show ID --field FIELD", "tess show"},
+		"flags that exclude each other": {[]string{"list", "--flat", "--tree"}, "tess list [--status STATUS] [--type TYPE] [--label LABEL] [--assignee NAME] [--parent ID] [--blocked] [-s TEXT] [--all] [--retired] [-n N] [--flat|--tree]", "tess list"},
+		"nothing to change":             {[]string{"update", id}, "tess update ID [--title TITLE] [-t TYPE] [-p N] [-a NAME] [--owner NAME] [--due DATE] [--add-label LABEL]... [--remove-label LABEL]... [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT] [--append]", "tess update"},
+		"unknown command":               {[]string{"frobnicate"}, "tess [COMMAND]", "tess"},
+		"a command under a command":     {[]string{"setup", "cursor"}, "tess setup claude [--check|--remove]", "tess setup"},
+		"a subcommand's arguments":      {[]string{"setup", "claude", "extra"}, "tess setup claude [--check|--remove]", "tess setup claude"},
+		"a retire without an issue":     {[]string{"retire"}, "tess retire ID... [-r REASON]", "tess retire"},
+		"an init with an argument":      {[]string{"init", "extra"}, "tess init [--prefix PREFIX]", "tess init"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := tess(t, tc.args...)
@@ -429,20 +431,16 @@ func TestCommandLineErrorsPrintUsageAndNoHint(t *testing.T) {
 			if !strings.HasPrefix(lines[0], "error: ") {
 				t.Errorf("first line is %q, want an error: line", lines[0])
 			}
-			tail := lines[len(lines)-2:]
-			if tail[0] != "usage: "+tc.usage {
-				t.Errorf("usage line is %q, want %q", tail[0], "usage: "+tc.usage)
-			}
-			if want := "run '" + tc.help + " --help' for examples"; tail[1] != want {
-				t.Errorf("last line is %q, want %q", tail[1], want)
+			if want := "\nusage: " + tc.usage + "\nrun '" + tc.help + " --help' for examples\n"; !strings.HasSuffix(r.stderr, want) {
+				t.Errorf("stderr is %q, want it to end with %q", r.stderr, want)
 			}
 			if strings.Contains(r.stderr, "hint:") {
 				t.Errorf("a command-line error has a hint line: %q", r.stderr)
 			}
 
 			e := wantError(t, tess(t, append(tc.args, "--json")...), "invalid_argument")
-			if e["hint"] != tc.usage {
-				t.Errorf("JSON hint is %v, want the use line %q", e["hint"], tc.usage)
+			if want := strings.ReplaceAll(tc.usage, "\n   or: ", "\n"); e["hint"] != want {
+				t.Errorf("JSON hint is %v, want the synopsis %q", e["hint"], want)
 			}
 		})
 	}

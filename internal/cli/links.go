@@ -53,7 +53,7 @@ func (a *app) linkCommand(name, short, long, example, done string,
 	change func(tracker.Tracker, context.Context, []string, string, []string) ([]tracker.Link, error),
 ) *cobra.Command {
 	return &cobra.Command{
-		Use:     name + " A TYPE B",
+		Use:     name + " ID... TYPE ID...",
 		Short:   short,
 		Long:    short + ".\n\n" + linkWordings + long,
 		Example: example,

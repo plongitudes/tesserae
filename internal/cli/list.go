@@ -27,7 +27,7 @@ func (a *app) readyCommand() *cobra.Command {
 	var l layout
 	filter := tracker.Filter{Ready: true}
 	cmd := &cobra.Command{
-		Use:   "ready",
+		Use:   "ready [-n N] [--flat|--tree]",
 		Short: "List the issues that can be worked on now, by priority",
 		Long: `List the issues that can be worked on now, by priority.
 
@@ -45,7 +45,7 @@ nothing is ready, a terminal gets a note on stderr and a pipeline gets nothing.`
 			return a.list(cmd.Context(), filter, l)
 		}),
 	}
-	cmd.Flags().IntVarP(&filter.Limit, "limit", "n", readyDefaultLimit, "show at most this many issues; 0 for all")
+	cmd.Flags().IntVarP(&filter.Limit, "limit", "n", readyDefaultLimit, "show at most `N` issues; 0 for all")
 	l.flags(cmd)
 	return cmd
 }
@@ -54,7 +54,7 @@ func (a *app) listCommand() *cobra.Command {
 	var l layout
 	var filter tracker.Filter
 	cmd := &cobra.Command{
-		Use:   "list",
+		Use:   "list [--status STATUS] [--type TYPE] [--label LABEL] [--assignee NAME] [--parent ID] [--blocked] [-s TEXT] [--all] [--retired] [-n N] [--flat|--tree]",
 		Short: "List issues, by priority; done, omit and retired issues are left out",
 		Long: `List issues, by priority; done, omit and retired issues are left out.
 
@@ -79,16 +79,16 @@ under its ancestors; elsewhere the output is one line per issue.`,
 		}),
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&filter.Status, "status", "", "only issues showing this status: "+strings.Join(tracker.DisplayedStatuses, ", "))
-	flags.StringVar(&filter.Type, "type", "", "only issues of this type: "+strings.Join(tracker.IssueTypes, ", "))
-	flags.StringVar(&filter.Label, "label", "", "only issues with this label")
-	flags.StringVar(&filter.Assignee, "assignee", "", "only issues assigned to this person")
-	flags.StringVar(&filter.Parent, "parent", "", "only descendants of this issue")
+	flags.StringVar(&filter.Status, "status", "", "only issues showing this `STATUS`: "+strings.Join(tracker.DisplayedStatuses, ", "))
+	flags.StringVar(&filter.Type, "type", "", "only issues of this `TYPE`: "+strings.Join(tracker.IssueTypes, ", "))
+	flags.StringVar(&filter.Label, "label", "", "only issues with this `LABEL`")
+	flags.StringVar(&filter.Assignee, "assignee", "", "only issues assigned to `NAME`")
+	flags.StringVar(&filter.Parent, "parent", "", "only descendants of the issue `ID`")
 	flags.BoolVar(&filter.Blocked, "blocked", false, "only blocked issues, of any status, with their blockers")
-	flags.StringVarP(&filter.Search, "search", "s", "", "only issues whose id, title, description, or notes contain this text")
+	flags.StringVarP(&filter.Search, "search", "s", "", "only issues whose id, title, description, or notes contain `TEXT`")
 	flags.BoolVar(&filter.All, "all", false, "include done and omit issues")
 	flags.BoolVar(&filter.Retired, "retired", false, "only retired issues")
-	flags.IntVarP(&filter.Limit, "limit", "n", 0, "show at most this many issues; 0 for all")
+	flags.IntVarP(&filter.Limit, "limit", "n", 0, "show at most `N` issues; 0 for all")
 	l.flags(cmd)
 	return cmd
 }

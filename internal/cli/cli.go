@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -130,12 +131,15 @@ type errorBody struct {
 // printError writes err to stderr: the envelope with --json, and otherwise
 // an `error:` line followed by one of two things (cli.md, Output). A
 // refusal has its hint, the next command to try. A command-line error has
-// the use line of cmd, the command it was made for, and where that
-// command's examples are; in the envelope the use line is the hint.
+// the synopsis of cmd, the command it was made for (a second form on an
+// "or:" line, as git prints one), and where that command's examples are; in
+// the envelope the synopsis is the hint.
 func (a *app) printError(err error, cmd *cobra.Command, asJSON bool) {
 	refusal, commandLine := classify(err)
+	var lines []string
 	if commandLine {
-		refusal.Hint = cmd.UseLine()
+		lines = synopsis(cmd)
+		refusal.Hint = strings.Join(lines, "\n")
 	}
 	switch {
 	case asJSON:
@@ -146,7 +150,7 @@ func (a *app) printError(err error, cmd *cobra.Command, asJSON bool) {
 		writeJSON(a.stderr, envelope{body})
 	case commandLine:
 		fmt.Fprintf(a.stderr, "error: %s\nusage: %s\nrun '%s --help' for examples\n",
-			refusal.Message, refusal.Hint, cmd.CommandPath())
+			refusal.Message, strings.Join(lines, "\n   or: "), cmd.CommandPath())
 	default:
 		fmt.Fprintf(a.stderr, "error: %s\n", refusal.Message)
 		if refusal.Hint != "" {

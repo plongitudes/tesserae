@@ -2,6 +2,8 @@ package cli
 
 import (
 	"io"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -202,14 +204,104 @@ func everyWord(t *testing.T) map[string]string {
 	return words
 }
 
-// The tree command went away in favour of `show --tree`; nothing may still
-// send a reader to it.
-func TestNothingNamesTheTreeCommand(t *testing.T) {
-	gone := "tess" + " tree"
-	for where, text := range everyWord(t) {
-		if strings.Contains(text, gone) || strings.Contains(text, "\n  tree ") {
-			t.Errorf("%s still names the tree command:\n%s", where, text)
-		}
+// placeholders are the words a value may be called in a synopsis or a flags
+// table (cli.md, Output), and PREFIX, for init's one flag.
+var placeholders = []string{
+	"TITLE", "ID", "TYPE", "N", "LABEL", "NAME", "TEXT", "DATE", "REASON",
+	"STATUS", "FIELD", "PATH", "PREFIX",
+}
+
+// flagLine is one line of a flags table: the short name, the long name, and
+// the word that stands for the value, if the flag takes one.
+var flagLine = regexp.MustCompile(`^\s+(?:-(\w), )?--([\w-]+)(?: (\S+))?(?:\s{3,}\S|$)`)
+
+// Help reads as man-page syntax (cli.md, Output): the usage is a full
+// synopsis, never "[flags]"; a flag that takes a value names it with a CAPS
+// placeholder, in the flags table and in the synopsis, never with a Go type.
+func TestHelpReadsAsSyntax(t *testing.T) {
+	for _, cmd := range everyCommand(t) {
+		t.Run(cmd.CommandPath(), func(t *testing.T) {
+			help := cmd.UsageString()
+			for _, never := range []string{"[flags]", "[command]"} {
+				if strings.Contains(help, never) {
+					t.Errorf("the help says %s:\n%s", never, help)
+				}
+			}
+			lines := synopsis(cmd)
+			_, usage, _ := strings.Cut(help, "Usage:\n")
+			for _, line := range lines {
+				if !strings.HasPrefix(line, cmd.CommandPath()) {
+					t.Errorf("synopsis line %q doesn't start with %q", line, cmd.CommandPath())
+				}
+				if !strings.HasPrefix(usage, "  "+line+"\n") {
+					t.Errorf("the help doesn't show the synopsis line %q under Usage:\n%s", line, help)
+				}
+				usage = strings.TrimPrefix(usage, "  "+line+"\n")
+			}
+			if cmd.UseLine() != lines[0] && len(lines) == 1 {
+				t.Errorf("cobra's use line is %q, the synopsis %q", cmd.UseLine(), lines[0])
+			}
+			all := strings.Join(lines, "\n")
+
+			local := cmd.LocalFlags().FlagUsages()
+			table := local + cmd.InheritedFlags().FlagUsages()
+			seen := 0
+			for _, line := range strings.Split(strings.TrimRight(table, "\n"), "\n") {
+				m := flagLine.FindStringSubmatch(line)
+				if m == nil {
+					continue // the rest of a wrapped description
+				}
+				seen++
+				short, name, value := m[1], m[2], m[3]
+				flag := cmd.Flags().Lookup(name)
+				if flag == nil {
+					t.Fatalf("the flags table names --%s, which isn't a flag:\n%s", name, table)
+				}
+				takesValue := flag.Value.Type() != "bool"
+				switch {
+				case !takesValue && value != "":
+					t.Errorf("--%s takes no value, but the table shows %q", name, value)
+				case takesValue && !slices.Contains(placeholders, value):
+					t.Errorf("--%s is shown with %q, which isn't a placeholder", name, value)
+				}
+				if name == "help" || name == "json" || !strings.Contains(local, line) {
+					continue // on every command: in the table, not the synopsis
+				}
+				forms := []string{"--" + name}
+				if short != "" {
+					forms = append(forms, "-"+short)
+				}
+				if takesValue {
+					for i := range forms {
+						forms[i] += " " + value
+					}
+				}
+				if !slices.ContainsFunc(forms, func(form string) bool {
+					return regexp.MustCompile(`(?m)[\[ |]` + regexp.QuoteMeta(form) + `([\] |]|$)`).MatchString(all)
+				}) {
+					t.Errorf("the synopsis doesn't show %s:\n%s", forms[0], all)
+				}
+			}
+			if seen == 0 {
+				t.Errorf("no flag line was read from the table:\n%s", table)
+			}
+		})
+	}
+}
+
+// A command with two forms has two synopsis lines, in help and in the
+// usage of a command-line error (cli.md, Output).
+func TestShowHasTwoSynopsisLines(t *testing.T) {
+	inInitialisedRepo(t)
+	r := tess(t, "show", "--help")
+	want := "Usage:\n  tess show ID... [--history] [--tree]\n  tess show ID --field FIELD\n"
+	if !strings.Contains(r.stdout, want) {
+		t.Errorf("show --help doesn't have\n%s\nin\n%s", want, r.stdout)
+	}
+	r = tess(t, "show")
+	want = "usage: tess show ID... [--history] [--tree]\n   or: tess show ID --field FIELD\nrun 'tess show --help' for examples\n"
+	if !strings.HasSuffix(r.stderr, want) {
+		t.Errorf("stderr is %q, want it to end with %q", r.stderr, want)
 	}
 }
 

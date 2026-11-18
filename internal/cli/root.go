@@ -78,5 +78,6 @@ names one issue.`,
 		a.setupCommand(),
 		a.hookCommand(),
 	)
+	asSyntax(root)
 	return root
 }

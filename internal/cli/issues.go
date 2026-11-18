@@ -35,10 +35,10 @@ type textFlags struct {
 
 func (f *textFlags) register(cmd *cobra.Command) {
 	flags := cmd.Flags()
-	flags.StringVarP(&f.description, "description", "d", "", `what the issue is about, or "-" to read stdin`)
-	flags.StringVar(&f.design, "design", "", `how it will be done, or "-" to read stdin`)
-	flags.StringVar(&f.acceptance, "acceptance", "", `acceptance criteria, or "-" to read stdin`)
-	flags.StringVar(&f.notes, "notes", "", `working notes, or "-" to read stdin`)
+	flags.StringVarP(&f.description, "description", "d", "", "what the issue is about: a `TEXT`, or \"-\" to read stdin")
+	flags.StringVar(&f.design, "design", "", "how it will be done: a `TEXT`, or \"-\" to read stdin")
+	flags.StringVar(&f.acceptance, "acceptance", "", "acceptance criteria: a `TEXT`, or \"-\" to read stdin")
+	flags.StringVar(&f.notes, "notes", "", "working notes: a `TEXT`, or \"-\" to read stdin")
 }
 
 // read resolves each text flag that was given, reading stdin for a "-", and
@@ -70,7 +70,7 @@ func (a *app) createCommand() *cobra.Command {
 		texts    textFlags
 	)
 	cmd := &cobra.Command{
-		Use:   "create TITLE",
+		Use:   "create TITLE [-t TYPE] [-p N] [-l LABEL]... [--parent ID] [-b ID]... [-a NAME] [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT]",
 		Short: "Create an issue; prints its ID",
 		Long: `Create an issue; prints its ID.
 
@@ -121,13 +121,13 @@ With --json the whole issue is printed.`,
 		}),
 	}
 	flags := cmd.Flags()
-	flags.StringVarP(&n.Type, "type", "t", "", "task (default), bug, feature, epic, or chore")
-	flags.IntVarP(&priority, "priority", "p", 2, "0 (most urgent) to 4")
+	flags.StringVarP(&n.Type, "type", "t", "", "the `TYPE` of issue: task (default), bug, feature, epic, or chore")
+	flags.IntVarP(&priority, "priority", "p", 2, "priority `N`: 0 (most urgent) to 4")
 	texts.register(cmd)
-	flags.StringArrayVarP(&n.Labels, "label", "l", nil, "a freeform label; repeat for several")
-	flags.StringVar(&n.Parent, "parent", "", "create as a child of this issue")
-	flags.StringArrayVarP(&n.BlockedBy, "blocked-by", "b", nil, "an issue this one waits for; repeat for several")
-	flags.StringVarP(&n.Assignee, "assignee", "a", "", "who is working on it")
+	flags.StringArrayVarP(&n.Labels, "label", "l", nil, "a freeform `LABEL`; repeat for several")
+	flags.StringVar(&n.Parent, "parent", "", "create as a child of the issue `ID`")
+	flags.StringArrayVarP(&n.BlockedBy, "blocked-by", "b", nil, "the `ID` of an issue this one waits for; repeat for several")
+	flags.StringVarP(&n.Assignee, "assignee", "a", "", "the `NAME` of who is working on it")
 	return cmd
 }
 
@@ -137,7 +137,7 @@ func (a *app) showCommand() *cobra.Command {
 		field         string
 	)
 	cmd := &cobra.Command{
-		Use:   "show ID...",
+		Use:   "show ID... [--history] [--tree]\nshow ID --field FIELD",
 		Short: "Show issues in full, with their links and comments",
 		Long: `Show issues in full, with their links and comments.
 
@@ -209,7 +209,7 @@ object, as --json prints it.`,
 	}
 	cmd.Flags().BoolVar(&history, "history", false, "add the issue's history: every change, oldest first")
 	cmd.Flags().BoolVar(&tree, "tree", false, "add the issue's children and blockers, nested, and theirs")
-	cmd.Flags().StringVar(&field, "field", "", "print one field's raw value (one ID): any key of the issue object")
+	cmd.Flags().StringVar(&field, "field", "", "print the raw value of one `FIELD` (one ID): any key of the issue object")
 	return cmd
 }
 
@@ -241,7 +241,7 @@ func (a *app) updateCommand() *cobra.Command {
 		patch                                  tracker.Patch
 	)
 	cmd := &cobra.Command{
-		Use:   "update ID",
+		Use:   "update ID [--title TITLE] [-t TYPE] [-p N] [-a NAME] [--owner NAME] [--due DATE] [--add-label LABEL]... [--remove-label LABEL]... [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT] [--append]",
 		Short: "Change any field of an issue but its status",
 		Long: `Change any field of an issue but its status.
 
@@ -316,15 +316,15 @@ given. It needs at least one of them, and does not apply to --title.`,
 		}),
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&title, "title", "", "a new title")
-	flags.StringVarP(&issueType, "type", "t", "", "task, bug, feature, epic, or chore")
-	flags.IntVarP(&priority, "priority", "p", 2, "0 (most urgent) to 4")
+	flags.StringVar(&title, "title", "", "a new `TITLE`")
+	flags.StringVarP(&issueType, "type", "t", "", "a new `TYPE`: task, bug, feature, epic, or chore")
+	flags.IntVarP(&priority, "priority", "p", 2, "priority `N`: 0 (most urgent) to 4")
 	texts.register(cmd)
 	flags.BoolVar(&patch.Append, "append", false, "the text flags add a paragraph to the field instead of replacing it")
-	flags.StringVarP(&assignee, "assignee", "a", "", `who is working on it; "" for no one`)
-	flags.StringVar(&owner, "owner", "", `who answers for it; "" for no one`)
-	flags.StringVar(&due, "due", "", `when it is due: YYYY-MM-DD or RFC 3339; "" for no date`)
-	flags.StringArrayVar(&patch.AddLabels, "add-label", nil, "a label to add; repeat for several")
-	flags.StringArrayVar(&patch.RemoveLabels, "remove-label", nil, "a label to remove; repeat for several")
+	flags.StringVarP(&assignee, "assignee", "a", "", "the `NAME` of who is working on it; \"\" for no one")
+	flags.StringVar(&owner, "owner", "", "the `NAME` of who answers for it; \"\" for no one")
+	flags.StringVar(&due, "due", "", "the `DATE` it is due: YYYY-MM-DD or RFC 3339; \"\" for no date")
+	flags.StringArrayVar(&patch.AddLabels, "add-label", nil, "a `LABEL` to add; repeat for several")
+	flags.StringArrayVar(&patch.RemoveLabels, "remove-label", nil, "a `LABEL` to remove; repeat for several")
 	return cmd
 }

@@ -20,7 +20,7 @@ type initResult struct {
 func (a *app) initCommand() *cobra.Command {
 	var prefix string
 	cmd := &cobra.Command{
-		Use:   "init",
+		Use:   "init [--prefix PREFIX]",
 		Short: "Create the database for this repository",
 		Long: `Create the database for this repository.
 
@@ -50,7 +50,7 @@ starts every new issue's ID; it defaults to the repository's directory name.`,
 			})
 		}),
 	}
-	cmd.Flags().StringVar(&prefix, "prefix", "", "what new issue IDs start with: a lowercase letter, then letters and digits (default: the repository's directory name)")
+	cmd.Flags().StringVar(&prefix, "prefix", "", "the `PREFIX` new issue IDs start with: a lowercase letter, then letters and digits (default: the repository's directory name)")
 	return cmd
 }
 

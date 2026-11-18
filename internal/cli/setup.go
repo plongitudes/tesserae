@@ -346,7 +346,7 @@ type removeResult struct {
 
 func (a *app) setupCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "setup claude",
+		Use:   "setup claude [--check|--remove]",
 		Short: "Write the files that let a coding agent use tess",
 		Long: `Write the files that let a coding agent use tess.
 
@@ -366,7 +366,7 @@ Claude Code is the one agent there is a setup for; see tess setup claude --help.
 func (a *app) setupClaudeCommand() *cobra.Command {
 	var check, remove bool
 	cmd := &cobra.Command{
-		Use:   "claude",
+		Use:   "claude [--check|--remove]",
 		Short: "Write the Claude Code skill, hooks and allow rule for tess",
 		Long: `Write the Claude Code skill, hooks and allow rule for tess.
 
