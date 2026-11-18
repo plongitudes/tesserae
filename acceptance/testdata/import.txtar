@@ -39,6 +39,20 @@ json stdout .status_reason 'deferred until 2026-03-01'
 exec tess show bd-e5 --json
 json stdout .status done
 json stdout .status_reason 'Fixed in v2'
+# A closed issue's history says when it was closed; a held one, when its hold
+# began; an open one has no history.
+exec tess show bd-e5 --history --json
+json stdout .history|length 1
+json stdout .history[0].attr status
+json stdout .history[0].old_value ready
+json stdout .history[0].new_value done
+json stdout .history[0].changed_at 2025-06-07T10:00:00Z
+exec tess show bd-c3 --history --json
+json stdout .history|length 1
+json stdout .history[0].new_value held
+json stdout .history[0].changed_at 2025-06-04T10:00:00Z
+exec tess show bd-b2 --history --json
+json stdout .history|length 0
 exec tess show bd-f6 --json
 json stdout .retired_at 2025-07-01T00:00:00Z
 
