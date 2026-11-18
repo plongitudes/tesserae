@@ -45,6 +45,8 @@ type bdIssue struct {
 	CreatedBy          string         `json:"created_by"`
 	UpdatedAt          time.Time      `json:"updated_at"`
 	CloseReason        string         `json:"close_reason"`
+	ClosedAt           *time.Time     `json:"closed_at"`
+	ClosedBy           string         `json:"closed_by"`
 	DueAt              *time.Time     `json:"due_at"`
 	DeferUntil         *time.Time     `json:"defer_until"`
 	DeletedAt          *time.Time     `json:"deleted_at"`
@@ -94,7 +96,7 @@ func (t *tracker) Import(ctx context.Context, r io.Reader) (ImportResult, error)
 				result.Skipped++
 				continue
 			}
-			if err := importIssue(ctx, tx, rec, now); err != nil {
+			if err := importIssue(ctx, tx, rec, now, t.actor); err != nil {
 				return err
 			}
 			added = append(added, rec)
@@ -158,8 +160,10 @@ func checkBD(rec bdIssue) error {
 	return nil
 }
 
-// importIssue writes one record as an issue, with its labels and comments.
-func importIssue(ctx context.Context, tx *sql.Tx, rec bdIssue, now time.Time) error {
+// importIssue writes one record as an issue, with its labels and comments,
+// and one status event where the old tool recorded a change of state
+// (acceptance/README.md, "Import reasons"). actor is who is importing.
+func importIssue(ctx context.Context, tx *sql.Tx, rec bdIssue, now time.Time, actor string) error {
 	row := sqlite.NewIssue{
 		ID: rec.ID, Title: rec.Title, Description: rec.Description, Design: rec.Design,
 		AcceptanceCriteria: rec.AcceptanceCriteria, Notes: rec.Notes,
@@ -206,6 +210,9 @@ func importIssue(ctx context.Context, tx *sql.Tx, rec bdIssue, now time.Time) er
 	if err := sqlite.InsertIssue(ctx, tx, row); err != nil {
 		return err
 	}
+	if err := importStatusEvent(ctx, tx, rec, row, actor); err != nil {
+		return err
+	}
 
 	for i := range comments {
 		if comments[i].CreatedAt.IsZero() {
@@ -223,6 +230,31 @@ func importIssue(ctx context.Context, tx *sql.Tx, rec bdIssue, now time.Time) er
 		}
 	}
 	return nil
+}
+
+// importStatusEvent gives an imported issue the one event its old record
+// vouches for: ready → done at closed_at (else updated_at) for a closed
+// issue, by closed_by when the record says; ready → held at updated_at for
+// a held one. Nothing for open, in-progress, or tombstones. ready as the old
+// value is a guess: the old tool kept no earlier status.
+func importStatusEvent(ctx context.Context, tx *sql.Tx, rec bdIssue, row sqlite.NewIssue, actor string) error {
+	if rec.Status == "tombstone" {
+		return nil
+	}
+	at, by := row.UpdatedAt, actor
+	switch row.Status {
+	case "done":
+		if rec.ClosedAt != nil && !rec.ClosedAt.IsZero() {
+			at = *rec.ClosedAt
+		}
+		if rec.ClosedBy != "" {
+			by = rec.ClosedBy
+		}
+	case "held":
+	default:
+		return nil
+	}
+	return sqlite.InsertStatusEvent(ctx, tx, rec.ID, at, by, "ready", row.Status)
 }
 
 // importStatus maps an old status to a stored status and its reason

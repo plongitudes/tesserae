@@ -121,8 +121,45 @@ func TestImportMapsOldStatuses(t *testing.T) {
 		if got.Status != tc.status || reason != tc.reason {
 			t.Errorf("%s: status %q, reason %q; want %q, %q", tc.id, got.Status, reason, tc.status, tc.reason)
 		}
-		if got.PreviousStatus != nil {
-			t.Errorf("%s: previous_status = %q; an import records no earlier status", tc.id, *got.PreviousStatus)
+		// A held import's one event says it was ready before (a guess the
+		// README owns up to); nothing else has an earlier status.
+		if tc.status == "held" {
+			if got.PreviousStatus == nil || *got.PreviousStatus != "ready" {
+				t.Errorf("%s: previous_status = %v; want ready", tc.id, got.PreviousStatus)
+			}
+		} else if got.PreviousStatus != nil {
+			t.Errorf("%s: previous_status = %q; want none", tc.id, *got.PreviousStatus)
+		}
+	}
+}
+
+// An import gives an issue the one event its old record vouches for: closed
+// at closed_at (else updated_at) by closed_by (else the importer); held at
+// updated_at by the importer. Open, in-progress, and tombstones have none.
+func TestImportRecordsWhenAnIssueWasClosedOrHeld(t *testing.T) {
+	f := newFixture(t)
+	f.mustImport(
+		bd("bd-open", ``),
+		strings.Replace(bd("bd-wip", ``), `"open"`, `"in_progress"`, 1),
+		strings.Replace(bd("bd-blocked", ``), `"open"`, `"blocked"`, 1),
+		strings.Replace(bd("bd-closed", `,"closed_at":"2025-06-07T10:00:00Z","closed_by":"closer"`), `"open"`, `"closed"`, 1),
+		strings.Replace(bd("bd-shut", ``), `"open"`, `"closed"`, 1),
+		strings.Replace(bd("bd-gone", `,"deleted_at":"2025-06-08T10:00:00Z"`), `"open"`, `"tombstone"`, 1),
+	)
+	f.wantChanges("bd-open")
+	f.wantChanges("bd-wip")
+	f.wantChanges("bd-gone")
+	f.wantChanges("bd-blocked", change{"status", "ready", "held"})
+	f.wantChanges("bd-closed", change{"status", "ready", "done"})
+	f.wantChanges("bd-shut", change{"status", "ready", "done"})
+	for _, tc := range []struct{ id, at, by string }{
+		{"bd-blocked", "2025-06-02T10:00:00Z", "tester"}, // updated_at, the importer
+		{"bd-closed", "2025-06-07T10:00:00Z", "closer"},  // closed_at, closed_by
+		{"bd-shut", "2025-06-02T10:00:00Z", "tester"},    // no closed_at: updated_at
+	} {
+		e := f.get(tc.id, tracker.WithHistory()).History[0]
+		if !e.ChangedAt.Equal(at(tc.at)) || e.ChangedBy != tc.by {
+			t.Errorf("%s: event at %s by %s; want %s by %s", tc.id, e.ChangedAt.Format(time.RFC3339), e.ChangedBy, tc.at, tc.by)
 		}
 	}
 }

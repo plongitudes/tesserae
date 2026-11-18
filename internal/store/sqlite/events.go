@@ -83,6 +83,13 @@ func previousStatus(ctx context.Context, tx *sql.Tx, issueID string) (*string, e
 	return nil, err
 }
 
+// InsertStatusEvent records a status change that happened before the issue
+// was in this database, dated when it happened: import's one exception to
+// events being written by the change itself.
+func InsertStatusEvent(ctx context.Context, tx *sql.Tx, issueID string, at time.Time, by, old, new string) error {
+	return insertEvent(ctx, tx, issueID, at, by, "status", old, new)
+}
+
 // insertEvent appends one event. old and new are nil, a string, or an int;
 // they are stored as JSON, with SQL NULL for nil. Unexported on purpose:
 // events are written only here in the store, by the functions that make the
