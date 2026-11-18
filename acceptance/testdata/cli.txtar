@@ -43,6 +43,25 @@ stdout 'Examples'
 exec tess retire --help
 stdout 'Examples'
 
+# Help reads as syntax: a full synopsis with CAPS placeholders, never a Go
+# type name or "[flags]" (cli.md, Output).
+exec tess create --help
+stdout '^  tess create TITLE \['
+stdout '--label LABEL'
+stdout '--priority N'
+! stdout 'string'
+! stdout '\[flags\]'
+exec tess link --help
+stdout '^  tess link ID\.\.\. TYPE ID\.\.\.'
+exec tess show --help
+stdout '^  tess show ID --field FIELD'
+! stdout '\[flags\]'
+exec tess update --help
+! stdout 'string'
+exec tess list --help
+! stdout 'string'
+! stdout '\[flags\]'
+
 # JSON errors: code, message, hint; exit 1.
 ! exec tess show t-zzzzzzzz --json
 json stderr .error.code not_found
@@ -68,7 +87,7 @@ stderr '^usage: tess create'
 stderr 'tess create --help'
 ! stderr '^hint: '
 ! exec tess link t-aaa
-stderr '^usage: tess link'
+stderr '^usage: tess link ID\.\.\. TYPE ID\.\.\.'
 ! exec tess link t-aaa --json
 json stderr .error.code invalid_argument
 stderr '"hint":"tess link'

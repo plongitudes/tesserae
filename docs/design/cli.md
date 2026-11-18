@@ -82,6 +82,15 @@ Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), 
   `⊖` is the no-entry road sign; `≈` is "approximately right, not yet confirmed"; `✓`/`✗` are a matched pair. Errors print `error:`, never `✗`, so an omitted issue can't be mistaken for a failure. `⚠` is reserved for warnings.
 - `--json` on every command. Issues are objects with snake_case fields; lists are arrays; mutating commands return the affected issue(s), and `status`/`retire` return `{"updated": [...], "newly_unblocked": [...]}`. `status` is the displayed status (incl. derived `waiting`/`ready`), plus a `blocked` boolean. Exact shapes: [acceptance/README.md](../../acceptance/README.md).
 - Every `--help` has examples. Short factual notes may go to stderr when true (e.g. unsynced changes), never on every command.
+- Help follows man-page conventions (POSIX utility argument syntax, man-pages(7)), in plain text (added 2026-11-17). The `Usage:` line is a full synopsis: `[ ]` optional, `...` repeatable, `|` alternatives, every flag that takes a value shown with its placeholder, no `[flags]`. A command with two forms gets two synopsis lines. Placeholders are CAPS words named for the value, not the type: `TITLE`, `ID`, `TYPE`, `N` (a count or priority), `LABEL`, `NAME` (a person), `TEXT` (a long text; `-` for stdin stays in the description), `DATE`, `REASON`, `STATUS`, `FIELD`, `PATH`. The flags table uses the same placeholders (`-l, --label LABEL`) and never a Go type name (`string`, `stringArray`, `int`). The `usage:` line of a command-line error is the synopsis. Real `man` pages are not v1 (cobra's generator pulls in a new module, ADR-0020).
+
+  ```
+  tess create TITLE [-t TYPE] [-p N] [-l LABEL]... [--parent ID] [-b ID]... [-a NAME] [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT]
+  tess link ID... TYPE ID...
+  tess status ID... STATUS [-r REASON] [--force]
+  tess show ID... [--history] [--tree]
+  tess show ID --field FIELD
+  ```
 - Errors go to stderr. With `--json`, stderr is `{"error": {"code": "...", "message": "...", "hint": "..."}}` and `code` is stable (`not_found`, `ambiguous_id`, `cycle`, `retired`, ...). Exit status is non-zero.
 - Two kinds of error, two shapes in plain mode. A command-line error (wrong number of arguments, unknown command or flag, bad flag value; code `invalid_argument`) prints `error: ...`, then `usage: tess link A TYPE B` (the command's use line), then `run 'tess link --help' for examples`; in JSON the `hint` is the use line. A refusal from the tracker (`not_found`, `cycle`, `blocked`, ...) prints `error: ...` and a `hint:` naming the next command to try. Usage for syntax, hints for next steps, as git and cargo do.
 - `tess ready` on a TTY with no results prints `no ready issues` and a hint on stderr; when piped it prints nothing, so pipelines stay clean.
