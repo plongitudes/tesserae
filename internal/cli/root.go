@@ -25,7 +25,7 @@ const orientation = `tess tracks this repository's issues. One database serves e
   tess sync                     share issues with other machines
 
 Add --json to any command for stable JSON; errors carry a code and a hint.
-Run ` + "`tess COMMAND --help`" + ` for flags and examples.
+Run ` + "`tess COMMAND --help`" + ` for the complete list of flags, and examples.
 `
 
 func (a *app) rootCommand() *cobra.Command {
