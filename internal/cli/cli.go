@@ -93,14 +93,17 @@ const codeInternal = "internal"
 // flags that cobra let through but that don't make a command (cli.md,
 // Output). It is printed as cobra's own command-line errors are, with the
 // command's use line where a refusal has its hint.
-type usageError struct{ message string }
+type usageError struct {
+	message string
+	code    string // "" is invalid_argument
+}
 
 func (u *usageError) Error() string { return u.message }
 
 // usage makes a command-line error. The message has to carry whatever the
 // use line can't say, such as the values a flag takes.
 func usage(format string, args ...any) error {
-	return &usageError{fmt.Sprintf(format, args...)}
+	return &usageError{message: fmt.Sprintf(format, args...)}
 }
 
 // action wraps a command's body so that every error leaving it is a refusal
@@ -172,6 +175,10 @@ func classify(err error) (refusal *tracker.Error, commandLine bool) {
 	var f *failure
 	if errors.As(err, &f) {
 		return &tracker.Error{Code: codeInternal, Message: err.Error()}, false
+	}
+	var u *usageError
+	if errors.As(err, &u) && u.code != "" {
+		return &tracker.Error{Code: u.code, Message: err.Error()}, true
 	}
 	return &tracker.Error{Code: tracker.CodeInvalidArgument, Message: err.Error()}, true
 }

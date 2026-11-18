@@ -75,6 +75,14 @@ under its ancestors; elsewhere the output is one line per issue.`,
   tess list --all --json`,
 		Args: cobra.NoArgs,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
+			if err := checkDisplayedStatus(filter.Status); err != nil {
+				return err
+			}
+			if filter.Type != "" {
+				if err := checkType(filter.Type); err != nil {
+					return err
+				}
+			}
 			return a.list(cmd.Context(), filter, l)
 		}),
 	}

@@ -92,7 +92,15 @@ With --json the whole issue is printed.`,
 		},
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			n.Title = args[0]
+			if n.Type != "" {
+				if err := checkType(n.Type); err != nil {
+					return err
+				}
+			}
 			if cmd.Flags().Changed("priority") {
+				if err := checkPriority(priority); err != nil {
+					return err
+				}
 				n.Priority = &priority
 			}
 			err := texts.read(a, cmd, func(flag, text string) {
@@ -271,6 +279,16 @@ given. It needs at least one of them, and does not apply to --title.`,
 			if fields == 0 {
 				return usage("update was given nothing to change; name a field with a flag (a status is changed with `tess status`)")
 			}
+			if cmd.Flags().Changed("type") {
+				if err := checkType(issueType); err != nil {
+					return err
+				}
+			}
+			if cmd.Flags().Changed("priority") {
+				if err := checkPriority(priority); err != nil {
+					return err
+				}
+			}
 			// Only the flags that were given go into the patch.
 			for name, set := range map[string]func(){
 				"title":    func() { patch.Title = &title },
@@ -318,7 +336,7 @@ given. It needs at least one of them, and does not apply to --title.`,
 	flags := cmd.Flags()
 	flags.StringVar(&title, "title", "", "a new `TITLE`")
 	flags.StringVarP(&issueType, "type", "t", "", "a new `TYPE`: task, bug, feature, epic, or chore")
-	flags.IntVarP(&priority, "priority", "p", 2, "priority `N`: 0 (most urgent) to 4")
+	flags.IntVarP(&priority, "priority", "p", 0, "priority `N`: 0 (most urgent) to 4")
 	texts.register(cmd)
 	flags.BoolVar(&patch.Append, "append", false, "the text flags add a paragraph to the field instead of replacing it")
 	flags.StringVarP(&assignee, "assignee", "a", "", "the `NAME` of who is working on it; \"\" for no one")

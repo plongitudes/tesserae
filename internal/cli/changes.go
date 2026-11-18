@@ -71,7 +71,7 @@ and its reason is changed. Several IDs are changed together or not at all.`,
 			if len(args) < 2 {
 				return usage("status takes one or more IDs and then a status: %s", strings.Join(tracker.Statuses, ", "))
 			}
-			return nil
+			return checkSettableStatus(args[len(args)-1])
 		},
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			ids, status := args[:len(args)-1], args[len(args)-1]
