@@ -51,7 +51,7 @@ Flags:
 Global Flags:
 {{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableSubCommands}}
 
-Run '{{.CommandPath}} COMMAND --help' for a command's flags and examples.{{end}}
+Run '{{.CommandPath}} COMMAND --help' for a command's complete list of flags, and examples.{{end}}
 `
 
 // asSyntax makes root and every command under it print help as syntax.
