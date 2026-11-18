@@ -411,6 +411,9 @@ func TestCommandLineErrorsPrintUsageAndNoHint(t *testing.T) {
 		"unknown flag":                  {[]string{"list", "--frobnicate"}, "tess list [--status STATUS] [--type TYPE] [--label LABEL] [--assignee NAME] [--parent ID] [--blocked] [-s TEXT] [--all] [--retired] [-n N] [--flat|--tree]", "tess list"},
 		"flag without its value":        {[]string{"list", "-n"}, "tess list [--status STATUS] [--type TYPE] [--label LABEL] [--assignee NAME] [--parent ID] [--blocked] [-s TEXT] [--all] [--retired] [-n N] [--flat|--tree]", "tess list"},
 		"bad flag value, by cobra":      {[]string{"ready", "-n", "many"}, "tess ready [-n N] [--flat|--tree]", "tess ready"},
+		"bad priority":                  {[]string{"update", id, "-p", "9"}, "tess update ID [--title TITLE] [-t TYPE] [-p N] [-a NAME] [--owner NAME] [--due DATE] [--add-label LABEL]... [--remove-label LABEL]... [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT] [--append]", "tess update"},
+		"bad type on create":            {[]string{"create", "An issue", "-t", "saga"}, "tess create TITLE [-t TYPE] [-p N] [-l LABEL]... [--parent ID] [-b ID]... [-a NAME] [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT]", "tess create"},
+		"bad type on list":              {[]string{"list", "--type", "saga"}, "tess list [--status STATUS] [--type TYPE] [--label LABEL] [--assignee NAME] [--parent ID] [--blocked] [-s TEXT] [--all] [--retired] [-n N] [--flat|--tree]", "tess list"},
 		"bad flag value, by tess":       {[]string{"update", id, "--due", "tomorrow"}, "tess update ID [--title TITLE] [-t TYPE] [-p N] [-a NAME] [--owner NAME] [--due DATE] [--add-label LABEL]... [--remove-label LABEL]... [-d TEXT] [--design TEXT] [--acceptance TEXT] [--notes TEXT] [--append]", "tess update"},
 		"unknown field":                 {[]string{"show", id, "--field", "nope"}, "tess show ID... [--history] [--tree]\n   or: tess show ID --field FIELD", "tess show"},
 		"--field with two issues":       {[]string{"show", id, id, "--field", "notes"}, "tess show ID... [--history] [--tree]\n   or: tess show ID --field FIELD", "tess show"},
@@ -460,6 +463,8 @@ func TestCommandLineErrorsNameTheValuesThatWouldWork(t *testing.T) {
 		"no link type":      {[]string{"link", id, id}, "blocked-by"},
 		"no status":         {[]string{"status", id}, "pending-review"},
 		"bad date":          {[]string{"update", id, "--due", "tomorrow"}, "2026-02-01"},
+		"bad type":          {[]string{"create", "x", "-t", "saga"}, "feature"},
+		"bad priority":      {[]string{"update", id, "-p", "9"}, "0 (most urgent)"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := wantError(t, tess(t, append(tc.args, "--json")...), "invalid_argument")
@@ -477,7 +482,7 @@ func TestRefusalsKeepTheirHintAndPrintNoUsage(t *testing.T) {
 	id := strings.TrimSpace(tess(t, "create", "An issue").stdout)
 	for name, args := range map[string][]string{
 		"not found":                {"show", "t-zzzzzzzz"},
-		"the tracker's own check":  {"update", id, "-p", "9"},
+		"an exact ID that's gone":  {"restore", "t-zzzzzzzz"},
 		"a file that isn't there":  {"import", "missing.jsonl"},
 		"a status that needs more": {"status", id, "held"},
 	} {
@@ -491,6 +496,32 @@ func TestRefusalsKeepTheirHintAndPrintNoUsage(t *testing.T) {
 			}
 			if strings.Contains(r.stderr, "usage:") || strings.Contains(r.stderr, "--help' for examples") {
 				t.Errorf("a refusal prints usage: %q", r.stderr)
+			}
+		})
+	}
+}
+
+// A status that can't be set is a command-line error too: usage, no hint,
+// but the code stays invalid_status (acceptance/README.md, "Errors").
+func TestBadStatusValuesPrintUsageAndKeepTheirCode(t *testing.T) {
+	inInitialisedRepo(t)
+	id := strings.TrimSpace(tess(t, "create", "An issue").stdout)
+	for name, tc := range map[string]struct {
+		args []string
+		want string // named in the message
+	}{
+		"waiting on status": {[]string{"status", id, "waiting"}, "set ready"},
+		"unknown on status": {[]string{"status", id, "closed"}, "pending-review"},
+		"unknown on list":   {[]string{"list", "--status", "nonsense"}, "waiting"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := tess(t, tc.args...)
+			if r.code != 1 || !strings.Contains(r.stderr, "\nusage: ") || strings.Contains(r.stderr, "hint:") {
+				t.Errorf("stderr is %q, want usage and no hint", r.stderr)
+			}
+			e := wantError(t, tess(t, append(tc.args, "--json")...), "invalid_status")
+			if msg, _ := e["message"].(string); !strings.Contains(msg, tc.want) {
+				t.Errorf("message %q doesn't say %q", msg, tc.want)
 			}
 		})
 	}
