@@ -21,12 +21,7 @@ import (
 // them. A database that `tess init` has not set up is refused with
 // not_initialized, and Load never creates one.
 func Load(ctx context.Context, dbPath string) (*Snapshot, error) {
-	if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
-		return nil, notInitialized()
-	} else if err != nil {
-		return nil, err
-	}
-	store, err := sqlite.Open(ctx, dbPath)
+	store, err := openExisting(ctx, dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -42,6 +37,17 @@ func Load(ctx context.Context, dbPath string) (*Snapshot, error) {
 		return nil, err
 	}
 	return snap, nil
+}
+
+// openExisting opens a database that is already there. sqlite.Open would
+// create the file, and sync never makes a database.
+func openExisting(ctx context.Context, dbPath string) (*sqlite.Store, error) {
+	if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
+		return nil, notInitialized()
+	} else if err != nil {
+		return nil, err
+	}
+	return sqlite.Open(ctx, dbPath)
 }
 
 func notInitialized() *tracker.Error {

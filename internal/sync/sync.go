@@ -1,7 +1,8 @@
 // Package sync exchanges issues between copies of a tracker over a git ref
 // (docs/design/sync.md). This file is the exported API the acceptance
 // simulator (acceptance/sim) and the CLI use. The snapshot's encoding is in
-// snapshot.go, Load in load.go and Merge in merge.go; Run is not built yet.
+// snapshot.go, Load in load.go, Merge in merge.go and Store, which writes a
+// merged snapshot back, in store.go; Run is not built yet.
 package sync
 
 import (

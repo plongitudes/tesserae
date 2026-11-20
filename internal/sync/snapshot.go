@@ -95,16 +95,7 @@ func (s *Snapshot) Files() map[string][]byte {
 	files := make(map[string][]byte, 1+len(s.Issues)+len(s.Comments)+len(s.Events)+len(s.Texts))
 	files[configPath] = encode(configFile{Format: s.Config.Format, Prefix: s.Config.Prefix})
 	for _, i := range s.Issues {
-		files[issuesDir+i.ID+jsonSuffix] = encode(issueFile{
-			ID: i.ID, Title: i.Title,
-			Description: i.Description, Design: i.Design, AcceptanceCriteria: i.AcceptanceCriteria, Notes: i.Notes,
-			Type: i.Type, Priority: i.Priority,
-			Status: i.Status, StatusReason: i.StatusReason, Assignee: i.Assignee, Owner: i.Owner,
-			Labels: sorted(i.Labels), Parent: i.Parent,
-			BlockedBy: sorted(i.BlockedBy), Related: sorted(i.Related), DiscoveredFrom: sorted(i.DiscoveredFrom),
-			DueAt: formatTimePtr(i.DueAt), CreatedAt: formatTime(i.CreatedAt), CreatedBy: i.CreatedBy,
-			UpdatedAt: formatTime(i.UpdatedAt), RetiredAt: formatTimePtr(i.RetiredAt),
-		})
+		files[issuesDir+i.ID+jsonSuffix] = issueBytes(i)
 	}
 	for _, c := range s.Comments {
 		files[commentsDir+c.IssueID+"/"+c.ID+jsonSuffix] = commentBytes(c)
@@ -116,6 +107,21 @@ func (s *Snapshot) Files() map[string][]byte {
 		files[textsDir+hash] = []byte(body)
 	}
 	return files
+}
+
+// issueBytes is an issue's file. Two records of an issue are the same
+// record exactly when their files are.
+func issueBytes(i *Issue) []byte {
+	return encode(issueFile{
+		ID: i.ID, Title: i.Title,
+		Description: i.Description, Design: i.Design, AcceptanceCriteria: i.AcceptanceCriteria, Notes: i.Notes,
+		Type: i.Type, Priority: i.Priority,
+		Status: i.Status, StatusReason: i.StatusReason, Assignee: i.Assignee, Owner: i.Owner,
+		Labels: sorted(i.Labels), Parent: i.Parent,
+		BlockedBy: sorted(i.BlockedBy), Related: sorted(i.Related), DiscoveredFrom: sorted(i.DiscoveredFrom),
+		DueAt: formatTimePtr(i.DueAt), CreatedAt: formatTime(i.CreatedAt), CreatedBy: i.CreatedBy,
+		UpdatedAt: formatTime(i.UpdatedAt), RetiredAt: formatTimePtr(i.RetiredAt),
+	})
 }
 
 // commentBytes is a comment's file.
