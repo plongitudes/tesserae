@@ -24,6 +24,7 @@ const (
 
 	ReasonLater   = "later"   // both sides changed the unit; the later event won
 	ReasonRetired = "retired" // an edit made after the other side retired the issue
+	// ReasonCycle, a link dropped to keep the hierarchy rules, is in structure.go.
 )
 
 // Merge is the pure 3-way merge of sync.md, "The merge": a function of the
@@ -67,6 +68,7 @@ func Merge(lkg, ours, theirs *Snapshot) (*Snapshot, []Resolution, error) {
 		out.Issues[id] = issue
 	}
 	m.related(out)
+	m.structure(out)
 	m.records(out)
 	for _, s := range []*Snapshot{m.lkg, m.sides[0], m.sides[1]} {
 		for hash, body := range s.Texts {
