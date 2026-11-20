@@ -23,6 +23,7 @@ const orientation = `tess tracks this repository's issues. One database serves e
   tess retire ID                take a mistaken issue out of every view
   tess restore ID               bring a retired issue back
   tess sync                     exchange issues with the other copies; --dry-run
+  tess doctor                   check the setup: git, database, remote, sync, hooks
 
 Add --json to any command for stable JSON; errors carry a code and a hint.
 Run ` + "`tess COMMAND --help`" + ` for the complete list of flags, and examples.
@@ -75,6 +76,7 @@ names one issue.`,
 		a.listCommand(),
 		a.importCommand(),
 		a.syncCommand(),
+		a.doctorCommand(),
 		a.setupCommand(),
 		a.hookCommand(),
 	)

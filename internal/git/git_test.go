@@ -200,3 +200,21 @@ func TestUpdateRefMovesOnlyFromTheExpectedValue(t *testing.T) {
 		t.Errorf("ref = %s, want %s", got, two)
 	}
 }
+
+func TestVersionIsTheGitBinarysVersion(t *testing.T) {
+	got, err := Version(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.TrimPrefix(run(t, "", "--version"), "git version ")
+	if got != want || got == "" || strings.Contains(got, "git") {
+		t.Errorf("Version is %q, want %q", got, want)
+	}
+}
+
+func TestVersionWithoutGitSaysGitIsMissing(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if _, err := Version(ctx); err == nil || !strings.Contains(err.Error(), "can't find it") {
+		t.Errorf("error is %v, want it to say git can't be found", err)
+	}
+}

@@ -129,7 +129,7 @@ func TestNoArgumentsPrintsOneLinePerWorkingCommandAndNoPlumbing(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q", r.code, r.stderr)
 	}
 	lines := strings.Split(r.stdout, "\n")
-	for _, name := range []string{"ready", "create", "show", "update", "status", "comment", "link", "unlink", "list", "retire", "restore", "sync"} {
+	for _, name := range []string{"ready", "create", "show", "update", "status", "comment", "link", "unlink", "list", "retire", "restore", "sync", "doctor"} {
 		n := 0
 		for _, line := range lines {
 			if strings.HasPrefix(line, "  tess "+name+" ") {

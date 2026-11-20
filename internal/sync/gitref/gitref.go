@@ -118,6 +118,13 @@ func choose(remotes []git.Remote, name string) (string, error) {
 // Remote is the name of the remote this transport syncs with.
 func (t *Transport) Remote() string { return t.remote }
 
+// Local reads the local ref of the repository dir is in, with no remote in
+// the matter: what the last sync left, for a report on this copy alone.
+func Local(ctx context.Context, dir string) (Tree, error) {
+	t := &Transport{repo: git.Repo{Dir: dir}, blobs: map[string][]byte{}}
+	return t.Local(ctx)
+}
+
 // Local reads the local ref: the last known good snapshot.
 func (t *Transport) Local(ctx context.Context) (Tree, error) {
 	return t.read(ctx, syncRef)

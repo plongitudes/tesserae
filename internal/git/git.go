@@ -118,6 +118,15 @@ func reason(stderr string) string {
 	return first
 }
 
+// Version returns the version of the git binary on PATH, as in "2.47.1".
+func Version(ctx context.Context) (string, error) {
+	out, err := Repo{}.run(ctx, nil, "--version")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(strings.TrimSpace(string(out)), "git version "), nil
+}
+
 // abs makes a path git printed (relative to the repository's Dir, or whole)
 // absolute.
 func (r Repo) abs(path string) (string, error) {

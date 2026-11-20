@@ -57,6 +57,10 @@ func (a *app) run(args []string) int {
 	// The command comes back even on an error: the one that was run, or the
 	// one whose command line couldn't be read.
 	cmd, err := root.ExecuteContextC(context.Background())
+	if errors.Is(err, errChecksFailed) {
+		// Doctor's report is its own account of what is wrong.
+		return 1
+	}
 	if err != nil {
 		// A command line that failed to parse may not have reached --json.
 		a.printError(err, cmd, a.json || askedForJSON(args))
