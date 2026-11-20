@@ -48,6 +48,6 @@ cd ../repo
 exec tess show $B --json
 json stdout .title 'Made in worktree'
 
-# tess sync is a no-op in loop 1.
-exec tess sync
-stderr 'sync: not available yet'
+# Without a remote, sync says so (loop 2); the details are in sync.txtar.
+! exec tess sync --json
+json stderr .error.code no_remote

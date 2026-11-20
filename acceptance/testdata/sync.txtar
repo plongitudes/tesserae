@@ -1,0 +1,366 @@
+# Sync between copies through a bare remote (sync.md, ADR-0021, ADR-0022,
+# ADR-0023). Copies a and b are two repositories with the same remote;
+# TESS_NOW orders edits across them.
+
+exec git init -q --bare remote.git
+exec git init -q a
+exec git init -q b
+cd a
+exec tess init --prefix t
+
+# No remote: no_remote.
+! exec tess sync --json
+json stderr .error.code no_remote
+exec git remote add origin $WORK/remote.git
+
+# The first sync pushes; the next is up to date.
+capture A -- tess create 'Shared' --json
+exec tess sync --json
+json stdout .remote origin
+json stdout .pushed 1
+json stdout .fetched 0
+json stdout .resolved []
+json stdout .dry_run false
+exec tess sync
+stdout 'up to date'
+! stderr .
+
+# The other copy fetches it.
+cd ../b
+exec tess init --prefix t
+exec git remote add origin $WORK/remote.git
+exec tess sync --json
+json stdout .fetched 1
+json stdout .pushed 0
+exec tess show $A --json
+json stdout .title Shared
+
+# Different fields on each side merge with nothing to resolve.
+env TESS_NOW=2026-01-02T00:00:00Z
+exec tess update $A -a bob
+cd ../a
+env TESS_NOW=2026-01-02T00:00:01Z
+exec tess update $A -p 0
+exec tess sync
+stdout 'pushed 1'
+cd ../b
+exec tess sync --json
+json stdout .resolved []
+exec tess show $A --json
+json stdout .priority 0
+json stdout .assignee bob
+cd ../a
+exec tess sync
+exec tess show $A --json
+json stdout .assignee bob
+
+# The same field on both sides: the later event wins, and it is reported.
+env TESS_NOW=2026-01-03T00:00:00Z
+exec tess update $A --title 'From a'
+cd ../b
+env TESS_NOW=2026-01-03T00:00:05Z
+exec tess update $A --title 'From b'
+exec tess sync
+cd ../a
+exec tess sync --json
+json stdout .resolved[0].issue $A
+json stdout .resolved[0].field title
+json stdout .resolved[0].kept 'From b'
+json stdout .resolved[0].dropped 'From a'
+json stdout .resolved[0].won remote
+json stdout .resolved[0].reason later
+json stdout .resolved|length 1
+exec tess show $A --json
+json stdout .title 'From b'
+
+# Both edits are in the history: events are unioned, never dropped.
+exec tess show $A --history --json
+json stdout .history[*].new_value has 'From a'
+json stdout .history[*].new_value has 'From b'
+
+# The other way round, in plain mode: this copy's later edit wins; the
+# resolution goes to stderr, the summary to stdout.
+env TESS_NOW=2026-01-04T00:00:00Z
+exec tess update $A --title 'Later from a'
+cd ../b
+exec tess sync
+env TESS_NOW=2026-01-03T23:00:00Z
+exec tess update $A --title 'Earlier from b'
+exec tess sync
+cd ../a
+exec tess sync
+stderr '^resolved '$A' title: kept "Later from a"'
+stderr 'dropped "Earlier from b"'
+stdout 'resolved 1'
+exec tess show $A --json
+json stdout .title 'Later from a'
+cd ../b
+exec tess sync
+exec tess show $A --json
+json stdout .title 'Later from a'
+
+# Status and its reason are one unit.
+cd ../a
+env TESS_NOW=2026-01-05T00:00:00Z
+exec tess status $A held -r 'waiting on a'
+cd ../b
+env TESS_NOW=2026-01-05T00:00:10Z
+exec tess status $A in-progress
+exec tess sync
+cd ../a
+exec tess sync --json
+json stdout .resolved[0].field status
+json stdout .resolved[0].kept in-progress
+json stdout .resolved[0].dropped held
+exec tess show $A --json
+json stdout .status in-progress
+json stdout .status_reason null
+
+# A label removed on one copy stays removed when the other copy adds another.
+env TESS_NOW=2026-01-06T00:00:00Z
+exec tess update $A --add-label x
+exec tess sync
+cd ../b
+exec tess sync
+env TESS_NOW=2026-01-06T00:00:01Z
+exec tess update $A --remove-label x
+cd ../a
+env TESS_NOW=2026-01-06T00:00:02Z
+exec tess update $A --add-label y
+cd ../b
+exec tess sync
+cd ../a
+exec tess sync --json
+json stdout .resolved []
+exec tess show $A --json
+json stdout .labels '["y"]'
+cd ../b
+exec tess sync
+exec tess show $A --json
+json stdout .labels '["y"]'
+
+# A retire beats an edit the other copy made after it, not one made before.
+cd ../a
+env TESS_NOW=2026-01-07T00:00:00Z
+capture R -- tess create 'To retire' --json
+capture S -- tess create 'Edited then retired' --json
+exec tess sync
+cd ../b
+exec tess sync
+cd ../a
+env TESS_NOW=2026-01-07T00:01:00Z
+exec tess retire $R
+env TESS_NOW=2026-01-07T00:03:00Z
+exec tess retire $S
+exec tess sync
+cd ../b
+env TESS_NOW=2026-01-07T00:02:00Z
+exec tess update $R --title 'Edited after the retire'
+exec tess update $S --title 'Edited before the retire'
+exec tess sync --json
+json stdout .resolved|length 1
+json stdout .resolved[0].issue $R
+json stdout .resolved[0].field title
+json stdout .resolved[0].reason retired
+json stdout .resolved[0].kept 'To retire'
+json stdout .resolved[0].dropped 'Edited after the retire'
+exec tess show $R --json
+json stdout .title 'To retire'
+! json stdout .retired_at null
+exec tess show $S --json
+json stdout .title 'Edited before the retire'
+! json stdout .retired_at null
+exec tess list --retired --json
+json stdout .[*].id has $R
+json stdout .[*].id has $S
+
+# A later restore wins over the retire.
+cd ../a
+exec tess sync
+env TESS_NOW=2026-01-07T00:05:00Z
+exec tess restore $S
+exec tess sync
+cd ../b
+exec tess sync
+exec tess show $S --json
+json stdout .retired_at null
+json stdout .title 'Edited before the retire'
+
+# Two blocks links that close a loop across copies: the later one is dropped.
+cd ../a
+env TESS_NOW=2026-01-08T00:00:00Z
+capture X -- tess create 'X' --json
+capture Y -- tess create 'Y' --json
+exec tess sync
+cd ../b
+exec tess sync
+cd ../a
+env TESS_NOW=2026-01-08T00:01:00Z
+exec tess link $X blocks $Y
+exec tess sync
+cd ../b
+env TESS_NOW=2026-01-08T00:02:00Z
+exec tess link $Y blocks $X
+exec tess sync --json
+json stdout .resolved|length 1
+json stdout .resolved[0].reason cycle
+json stdout .resolved[0].issue $X
+json stdout .resolved[0].field blocked_by
+json stdout .resolved[0].dropped $Y
+json stdout .resolved[0].kept null
+exec tess show $Y --json
+json stdout .links.blocked_by has $X
+exec tess show $X --json
+json stdout .links.blocked_by []
+cd ../a
+exec tess sync
+exec tess show $X --json
+json stdout .links.blocked_by []
+
+# A blocks link into an issue's own hierarchy, made on the other copy, goes too.
+env TESS_NOW=2026-01-08T00:03:00Z
+capture P -- tess create 'Parent' --json
+capture C -- tess create 'Child' --json
+exec tess sync
+cd ../b
+exec tess sync
+cd ../a
+env TESS_NOW=2026-01-08T00:04:00Z
+exec tess link $P parent-of $C
+exec tess sync
+cd ../b
+env TESS_NOW=2026-01-08T00:05:00Z
+exec tess link $C blocks $P
+exec tess sync
+stderr '^dropped '$P' blocked_by '$C': would make a dependency loop'
+exec tess show $P --json
+json stdout .links.blocked_by []
+json stdout .links.children has $C
+
+# --dry-run reports and changes nothing.
+cd ../a
+exec tess sync
+env TESS_NOW=2026-01-09T00:00:00Z
+capture D -- tess create 'Dry' --json
+exec git rev-parse refs/tess/sync
+cp stdout ref-before
+exec tess sync --dry-run --json
+json stdout .dry_run true
+json stdout .pushed 1
+exec git rev-parse refs/tess/sync
+cmp stdout ref-before
+cd ../b
+exec tess sync
+! exec tess show $D --json
+json stderr .error.code not_found
+cd ../a
+exec tess sync --dry-run
+stdout 'would push 1'
+exec tess sync
+cd ../b
+exec tess sync
+exec tess show $D --json
+json stdout .title Dry
+
+# An unreachable remote: offline, nothing changed.
+cd ../a
+exec git remote set-url origin $WORK/nowhere.git
+! exec tess sync --json
+json stderr .error.code offline
+exec git remote set-url origin $WORK/remote.git
+
+# A push the remote refuses by policy: push_rejected, and nothing moves.
+cp pre-receive $WORK/remote.git/hooks/pre-receive
+chmod 755 $WORK/remote.git/hooks/pre-receive
+env TESS_NOW=2026-01-10T00:00:00Z
+capture E -- tess create 'Refused' --json
+exec git rev-parse refs/tess/sync
+cp stdout ref-before
+! exec tess sync --json
+json stderr .error.code push_rejected
+exec git rev-parse refs/tess/sync
+cmp stdout ref-before
+exec tess show $E --json
+json stdout .title Refused
+rm $WORK/remote.git/hooks/pre-receive
+exec tess sync
+cd ../b
+exec tess sync
+exec tess show $E --json
+json stdout .title Refused
+
+# A copy with another prefix is another tracker.
+cd $WORK
+exec git init -q c
+cd c
+exec tess init --prefix u
+exec git remote add origin $WORK/remote.git
+! exec tess sync --json
+json stderr .error.code prefix_mismatch
+
+# Two different issues with one ID: the sync refuses, naming both (ADR-0023).
+# The titles were chosen so that tester's and other's issues hash alike.
+cd $WORK
+exec git init -q d
+cd d
+exec tess init --prefix t
+exec git remote add origin $WORK/remote.git
+env TESS_NOW=2026-01-01T00:00:00Z
+env TESS_ACTOR=other
+exec tess create 'Other collider 6993' --json
+json stdout .id t-zk0
+cd ../a
+exec tess create 'Collider' --json
+json stdout .id t-zk0
+exec tess sync
+cd ../d
+! exec tess sync --json
+json stderr .error.code conflict
+stderr 't-zk0'
+stderr 'Collider'
+stderr 'Other collider 6993'
+exec tess show t-zk0 --json
+json stdout .title 'Other collider 6993'
+
+# The fix: recreate it under a new ID, retire the collider, sync again. The
+# live record wins over the retired one, which is dropped from this copy.
+capture F -- tess create 'Other collider, recreated' --json
+env TESS_NOW=2026-01-01T00:00:01Z
+exec tess retire t-zk0
+exec tess sync --json
+exec tess show t-zk0 --json
+json stdout .title Collider
+json stdout .retired_at null
+env TESS_ACTOR=
+cd ../a
+exec tess sync
+exec tess show $F --json
+json stdout .title 'Other collider, recreated'
+
+# The session-start hook syncs first and reports it as a fact; never on
+# stderr, never a failure.
+env TESS_NOW=2026-01-11T00:00:00Z
+stdin startup.json
+exec tess hook session-start
+stdout 'Last sync: just now'
+! stderr .
+cd ../c
+stdin startup.json
+exec tess hook session-start
+stdout 'Last sync: not synced \(prefix_mismatch\)'
+! stderr .
+cd $WORK
+exec git init -q e
+cd e
+exec tess init --prefix t
+stdin startup.json
+exec tess hook session-start
+stdout 'Last sync: never'
+! stderr .
+
+-- pre-receive --
+#!/bin/sh
+echo "refused by policy" >&2
+exit 1
+-- startup.json --
+{"source":"startup"}

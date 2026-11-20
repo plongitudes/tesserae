@@ -1,0 +1,119 @@
+# tess doctor checks the setup (sync.md, "Command surface"; README, "Doctor output").
+
+# Outside a repository: git is checked, repository fails, nothing after it; exit 1.
+! exec tess doctor --json
+json stdout .[0].check git
+json stdout .[0].level ok
+json stdout .[1].check repository
+json stdout .[1].level fail
+json stdout .|length 2
+
+# No database: fail, with the fix.
+exec git init -q repo
+cd repo
+! exec tess doctor --json
+json stdout .[2].check database
+json stdout .[2].level fail
+json stdout .[2].fix 'tess init'
+! exec tess doctor
+stdout '^fail +database'
+stdout 'fix: tess init'
+
+# A fresh database: everything ok or info, exit 0.
+exec tess init --prefix t
+exec tess doctor --json
+json stdout .[*].check '["git","repository","database","prefix","remote","sync","hooks","other_trackers"]'
+json stdout .[0].level ok
+json stdout .[1].level ok
+json stdout .[2].level ok
+json stdout .[3].level ok
+json stdout .[3].detail t
+json stdout .[4].level info
+json stdout .[5].level info
+json stdout .[6].level info
+json stdout .[7].level ok
+json stdout .[7].fix null
+exec tess doctor
+stdout '^ok +git'
+stdout '^ok +database'
+stdout '^info +remote'
+stdout '^info +sync +never synced'
+stdout '^info +hooks'
+! stdout '^fail'
+! stdout '^warn'
+
+# A remote, reachable, then synced; changes since the last sync are counted.
+exec git init -q --bare $WORK/remote.git
+exec git remote add origin $WORK/remote.git
+exec tess doctor --json
+json stdout .[4].level ok
+exec tess doctor --remote --json
+json stdout .[4].level ok
+exec tess sync
+exec tess doctor --json
+json stdout .[5].level ok
+exec tess doctor
+stdout '^ok +sync'
+exec tess create 'Not yet synced'
+exec tess doctor
+stdout '^ok +sync .*1 issue'
+
+# An unreachable remote is a warning, only when asked to test it; exit 0.
+exec git remote set-url origin $WORK/nowhere.git
+exec tess doctor --json
+json stdout .[4].level ok
+exec tess doctor --remote --json
+json stdout .[4].level warn
+exec tess doctor --remote
+stdout '^warn +remote'
+stdout 'fix:'
+exec git remote set-url origin $WORK/remote.git
+
+# Hooks: info until setup; ok once the hooks are in place and tess is on PATH.
+exec tess setup claude
+exec tess doctor --json
+json stdout .[6].level ok
+
+# Another tracker's directory or hooks: warn, naming it; nothing is changed.
+mkdir .beads
+exec tess doctor --json
+json stdout .[7].level warn
+stdout '\.beads'
+exec tess doctor
+stdout '^warn +other_trackers'
+exists .beads
+rm .beads
+cp beads-settings.json .claude/settings.json
+exec tess doctor --json
+json stdout .[7].level warn
+stdout 'bd prime'
+json stdout .[6].level info
+cmp .claude/settings.json beads-settings.json
+exec tess setup claude
+exec tess doctor --json
+json stdout .[7].level warn
+json stdout .[6].level ok
+cp plain-settings.json .claude/settings.json
+exec tess doctor --json
+json stdout .[7].level ok
+
+# The user's own Claude settings are read too, and nothing else.
+mkdir $HOME/.claude
+cp beads-settings.json $HOME/.claude/settings.json
+exec tess doctor --json
+json stdout .[7].level warn
+stdout 'bd prime'
+cmp $HOME/.claude/settings.json beads-settings.json
+
+-- beads-settings.json --
+{
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "startup", "hooks": [ { "type": "command", "command": "bd prime" } ] }
+    ]
+  }
+}
+-- plain-settings.json --
+{
+  "permissions": { "allow": ["Bash(npm test)"] }
+}
