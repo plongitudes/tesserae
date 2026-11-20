@@ -56,11 +56,14 @@ type Event struct {
 }
 
 // Resolution is one decision the merge made where the two sides differed
-// and both had a say (acceptance/README.md, "Sync output").
+// and both had a say (acceptance/README.md, "Sync output"). KeptAt and
+// DroppedAt are the times of the events that decided the unit on each side;
+// the zero time where that side had no event.
 type Resolution struct {
-	Issue, Field  string
-	Kept, Dropped any
-	Won, Reason   string
+	Issue, Field      string
+	Kept, Dropped     any
+	Won, Reason       string
+	KeptAt, DroppedAt time.Time
 }
 
 // Options is everything Run needs: the repository (any directory inside

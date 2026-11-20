@@ -205,7 +205,10 @@ func TestRunReportsAResolution(t *testing.T) {
 	b.update("2026-01-02T00:00:05Z", id, tracker.Patch{Title: ptr("From b")})
 	b.sync("2026-01-02T00:01:00Z")
 	res := a.sync("2026-01-02T00:02:00Z")
-	want := Resolution{Issue: id, Field: "title", Kept: "From b", Dropped: "From a", Won: WonRemote, Reason: ReasonLater}
+	want := Resolution{
+		Issue: id, Field: "title", Kept: "From b", Dropped: "From a", Won: WonRemote, Reason: ReasonLater,
+		KeptAt: at("2026-01-02T00:00:05Z"), DroppedAt: at("2026-01-02T00:00:00Z"),
+	}
 	if len(res.Resolved) != 1 || res.Resolved[0] != want {
 		t.Errorf("resolved = %+v, want %+v", res.Resolved, want)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -196,10 +197,16 @@ func filesText(s *Snapshot) []byte {
 	return buf.Bytes()
 }
 
+// wantResolutions compares everything about the resolutions but their
+// times, which times_test.go covers.
 func wantResolutions(t *testing.T, got []Resolution, want ...Resolution) {
 	t.Helper()
 	if len(got) == 0 && len(want) == 0 {
 		return
+	}
+	got = slices.Clone(got)
+	for i := range got {
+		got[i].KeptAt, got[i].DroppedAt = time.Time{}, time.Time{}
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("resolutions:\n got %+v\nwant %+v", got, want)

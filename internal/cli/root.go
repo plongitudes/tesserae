@@ -22,7 +22,7 @@ const orientation = `tess tracks this repository's issues. One database serves e
   tess list --status waiting    every other view: filters, -s, --all, --retired
   tess retire ID                take a mistaken issue out of every view
   tess restore ID               bring a retired issue back
-  tess sync                     share issues with other machines
+  tess sync                     exchange issues with the other copies; --dry-run
 
 Add --json to any command for stable JSON; errors carry a code and a hint.
 Run ` + "`tess COMMAND --help`" + ` for the complete list of flags, and examples.

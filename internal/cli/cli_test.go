@@ -312,19 +312,6 @@ func TestAnUnknownCommandInPlainModeIsOneErrorLineWithoutUsage(t *testing.T) {
 	}
 }
 
-func TestSyncIsAStubThatSaysSoOnStderr(t *testing.T) {
-	inInitialisedRepo(t)
-	r := tess(t, "sync")
-	if r.code != 0 || r.stdout != "" || r.stderr != "sync: not available yet\n" {
-		t.Errorf("exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
-	}
-	// With --json, stderr carries only an error object, so the note goes.
-	r = tess(t, "sync", "--json")
-	if r.code != 0 || r.stderr != "" {
-		t.Errorf("--json: exit %d, stderr %q", r.code, r.stderr)
-	}
-}
-
 func created(t *testing.T, args ...string) map[string]any {
 	t.Helper()
 	r := tess(t, append([]string{"create", "--json"}, args...)...)

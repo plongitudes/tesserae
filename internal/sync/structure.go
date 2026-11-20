@@ -58,9 +58,11 @@ func (m *merger) structure(out *Snapshot) {
 		} else {
 			setMember(&issue.BlockedBy, drop.other, false)
 		}
+		events, _ := m.linkEvents(drop)
 		m.resolved = append(m.resolved, Resolution{
 			Issue: drop.issue, Field: drop.field, Kept: nil, Dropped: drop.other,
 			Won: []string{WonLocal, WonRemote}[1-m.linkSide(drop)], Reason: ReasonCycle,
+			DroppedAt: eventTime(later(events[0], events[1])),
 		})
 	}
 }

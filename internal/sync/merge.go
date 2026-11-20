@@ -219,7 +219,7 @@ type choice struct {
 	values       [2]any    // each side's value as a resolution reports it
 	events       [2]*Event // each side's latest new event for the unit
 	winner       int
-	retired      bool           // the winner was put aside by the retire rule
+	retired      *retirement    // the retire that put the winner aside, if one did
 	apply        func(side int) // write that side's value into the result
 }
 
@@ -276,7 +276,7 @@ func (r *retirement) refuse(c *choice) {
 		return
 	}
 	if e.ChangedAt.After(r.at) || (e.ChangedAt.Equal(r.at) && e.ID > r.id) {
-		c.winner, c.retired = r.side, true
+		c.winner, c.retired = r.side, r
 	}
 }
 
@@ -285,20 +285,30 @@ func (r *retirement) refuse(c *choice) {
 // retire rule dropped an edit.
 func (m *merger) settle(c *choice) {
 	c.apply(c.winner)
-	var reason string
+	r := Resolution{
+		Issue: c.issue, Field: c.field,
+		Kept: c.values[c.winner], Dropped: c.values[1-c.winner],
+		Won:    []string{WonLocal, WonRemote}[c.winner],
+		KeptAt: eventTime(c.events[c.winner]), DroppedAt: eventTime(c.events[1-c.winner]),
+	}
 	switch a, b := c.events[0], c.events[1]; {
-	case c.retired:
-		reason = ReasonRetired
+	case c.retired != nil:
+		// What decided the unit on the kept side is the retire.
+		r.Reason, r.KeptAt = ReasonRetired, c.retired.at
 	case a != nil && b != nil && a.ID != b.ID:
-		reason = ReasonLater
+		r.Reason = ReasonLater
 	default:
 		return
 	}
-	m.resolved = append(m.resolved, Resolution{
-		Issue: c.issue, Field: c.field,
-		Kept: c.values[c.winner], Dropped: c.values[1-c.winner],
-		Won: []string{WonLocal, WonRemote}[c.winner], Reason: reason,
-	})
+	m.resolved = append(m.resolved, r)
+}
+
+// eventTime is when an event was made; the zero time for no event.
+func eventTime(e *Event) time.Time {
+	if e == nil {
+		return time.Time{}
+	}
+	return e.ChangedAt
 }
 
 // --- units ------------------------------------------------------------------

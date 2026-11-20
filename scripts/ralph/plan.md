@@ -86,6 +86,16 @@ Iterations append here, newest at the bottom, under a heading `### Item N`. Huma
 - `Fetched` is the issues whose files (the issue, its comments, its events) differ between ours and the merged tree; `Pushed` the same between theirs and the merged tree. `(*Result).Summary()` is new and exported: the README's one line, which is also the commit message after `tess sync: `. Item 7 can print it. Other new exported names: `CodeNoRemote`, `CodeOffline`, `CodePushRejected`, `CodeBusy`.
 - No deviations from the docs beyond item 5's `ErrChangedDuringSync`, which this item turns into a retry.
 
+### Item 7
+
+- Not checked off and not committed: the iteration aborted on the locked `acceptance/testdata/sync.txtar` (see Discovered). The code and tests are in the working tree; `init` passes, `cli` fails only on `tess doctor`, and `sync` passes every step up to line 273.
+- `Resolution` has `KeptAt` and `DroppedAt`, filled in `settle` (merge.go) and the structure pass. `later`: each side's latest new event. `retired`: `KeptAt` is the retire's time (the retire event's, or `retired_at` when no event logged it), `DroppedAt` the dropped edit's event. `cycle`: `DroppedAt` is the dropped link's latest new event, zero when nothing logged the link; `KeptAt` is always zero.
+- `internal/cli/sync.go` holds the command; the stub and its test are gone. It calls `sync.Run` with an empty `Dir` (the working directory), prints `Result.Summary()` on stdout and one line per resolution on stderr; with `--json` stderr is empty. JSON key order is the README's; a zero time is `null`.
+- Plain values: `title`, `assignee`, `owner` and a label are quoted; a status, a type, a priority, a date and an ID are bare, as sync.md's `kept done` and the README's `kept "From b"` both ask. A side with no value prints `none`. A text field's value is a hash, printed as `text ` and its first 12 characters.
+- A `retired` line for a collection names the element (`dropped t-a3f labels late: issue was retired at ...`), by analogy with the `cycle` line. The README gives the shape for a scalar only.
+- The orientation line is now `exchange issues with the other copies; --dry-run` (the glossary's "copy").
+- `wantResolutions` in merge_test.go ignores the two times, so the 17 older literals stand; `times_test.go` covers the times for each reason.
+
 ### Discovered
 
 (Work found outside the current item: one line each, for the human to turn into items or issues.)
@@ -97,6 +107,7 @@ Iterations append here, newest at the bottom, under a heading `### Item N`. Huma
 - Locked suite, same caveat. The scenario "retire on one copy, restore on the other, later wins" ends with `expect b X retired_at null`, but b's retire is the latest `retired_at` event in the script (a restores, then b restores and retires), so the latest-event rule and `checkLatestEventWins` both appear to want X retired on b.
 - Locked suite, same caveat. `checkLatestEventWins` excuses a collection element only by `r.Dropped`. When the retire rule refuses a removal made after the retire (a label or blocker removed on the other copy), the element stays, and the resolution is `Kept: element, Dropped: nil` by the README's wording, so the invariant looks up `labels/null` and appears to fail on "snapshot has X, which the latest event removed". Item 8 will meet this in random runs if it is real.
 - `Resolution` has no times, but the plain output of `tess sync` prints each side's event time (`kept "From b" (other copy, 2026-01-03T00:00:00Z)`) and the retire's time. The struct is fixed by the README, so item 7 needs another way to get them (the merged snapshot's events are not in `Result` either).
+- Locked suite, found by running it (item 7): `acceptance/testdata/sync.txtar` line 273, `cp pre-receive $WORK/remote.git/hooks/pre-receive`, runs while the script is in `$WORK/a`, and testscript resolves `cp`'s source against the current directory, so it fails with `stat $WORK/a/pre-receive: no such file or directory`; the archive's file is at `$WORK/pre-receive`. `cp $WORK/pre-receive ...` appears to be what was meant. The three `stdin startup.json` lines at the end (in `a`, `c` and `e`) look to have the same problem, since `stdin` reads its file the same way. Everything after line 273 that is not a hook step (push_rejected and recovery, prefix_mismatch, the ID collision and its fix) was run by hand with `bin/tess` in a temp directory and gave what the script expects.
 
 ### Reflections
 
@@ -128,3 +139,6 @@ Iterations append here, newest at the bottom, under a heading `### Item N`. Huma
 - Item 6: `busy` for "a command kept changing an issue the merge changed, three times" is a stretch of the code's meaning (sync.md: another sync holds the lock). It is the closest code, and the hint is the same: run it again. In that case the remote already has this copy's merged commit while the copy does not, which is the state sync.md's "order of 4 and 5" paragraph describes as safe.
 - Item 6: the commit message is `tess sync: fetched N issues, pushed N` with the counts of the round that pushed. sync.md says "`tess sync` plus the summary line" without giving the joiner; the colon is the earlier iteration's reading.
 - Item 6: `Run` reads the whole fetched tree and the whole LKG tree on every sync (two `ls-tree`, one or two `cat-file --batch`), and `Load`s the database once per round and again inside `Store`. Not measured at ten thousand issues. `Resolution` still lacks `KeptAt`/`DroppedAt`; the plan gives them to item 7 and the simulator compiles without them.
+- Item 7: sync.md prints a status bare (`kept done`) and the README prints a title in quotes (`kept "From b"`); neither says the rule. I quote by field (a person's own words), not by whether the value has a space, so one field always looks the same.
+- Item 7: a text field in a resolution shows a shortened hash, which tells a user only that the two descriptions differed. `Result` has no texts, so the command cannot show the words; `show --history` has the same limit.
+- Item 7: the done condition could not be shown by the suite. I did not work round the script (no copy of `pre-receive` written into `a/` by the binary or the tests); the hand run is the only evidence for the steps after line 273.
