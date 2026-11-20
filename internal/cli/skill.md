@@ -46,4 +46,5 @@ tess is this repository's issue tracker. The issues are in one database that eve
 - `tess show ID --history` lists every change to an issue and who made it.
 - IDs can be shortened to any part that is unique: `tess show 3kq`.
 - Text flags take `-` to read stdin: `tess update ID --notes - --append < more.md`. Without `--append` the text replaces the field.
+- `tess doctor` checks the setup (git, the database, the remote, the last sync, the hooks) and prints a `fix:` line under anything wrong; run it when `tess sync` fails or the issues look out of date.
 - A `blocks` link that would close a loop is refused with `cycle`, and so is one between an issue and its own ancestor or descendant: a parent already waits for its children.
