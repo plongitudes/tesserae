@@ -230,6 +230,19 @@ func TestDoctorSyncWarnsAfterAFailedSyncAndNamesTheCode(t *testing.T) {
 	}
 }
 
+func TestDoctorSyncWarnsWhenTheLocalRefIsGone(t *testing.T) {
+	root := copies(t, "a")
+	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
+	must(t, "create", "First")
+	must(t, "sync")
+	gitIn(t, filepath.Join(root, "a"), "update-ref", "-d", "refs/tess/sync")
+	checks, _ := doctor(t, 0)
+	c := wantLevel(t, checks, "sync", "warn")
+	if !strings.Contains(c.Detail, "2026-01-01T00:00:00Z") || !strings.Contains(c.Detail, "snapshot") {
+		t.Errorf("sync detail is %q, want the last sync and the lost snapshot", c.Detail)
+	}
+}
+
 func TestDoctorNeverSyncedWithoutARemoteStaysInfoAfterATry(t *testing.T) {
 	inInitialisedRepo(t)
 	tess(t, "sync") // no_remote: the remote check already says so
