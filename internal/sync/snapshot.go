@@ -107,20 +107,40 @@ func (s *Snapshot) Files() map[string][]byte {
 		})
 	}
 	for _, c := range s.Comments {
-		files[commentsDir+c.IssueID+"/"+c.ID+jsonSuffix] = encode(commentFile{
-			ID: c.ID, IssueID: c.IssueID, Author: c.Author, Text: c.Text, CreatedAt: formatTime(c.CreatedAt),
-		})
+		files[commentsDir+c.IssueID+"/"+c.ID+jsonSuffix] = commentBytes(c)
 	}
 	for _, e := range s.Events {
-		files[eventsDir+e.IssueID+"/"+e.ID+jsonSuffix] = encode(eventFile{
-			ID: e.ID, IssueID: e.IssueID, ChangedAt: formatTime(e.ChangedAt), ChangedBy: e.ChangedBy,
-			Attr: e.Attr, OldValue: e.OldValue, NewValue: e.NewValue,
-		})
+		files[eventsDir+e.IssueID+"/"+e.ID+jsonSuffix] = eventBytes(e)
 	}
 	for hash, body := range s.Texts {
 		files[textsDir+hash] = []byte(body)
 	}
 	return files
+}
+
+// commentBytes is a comment's file.
+func commentBytes(c *Comment) []byte {
+	return encode(commentFile{
+		ID: c.ID, IssueID: c.IssueID, Author: c.Author, Text: c.Text, CreatedAt: formatTime(c.CreatedAt),
+	})
+}
+
+// eventBytes is an event's file.
+func eventBytes(e *Event) []byte {
+	return encode(eventFile{
+		ID: e.ID, IssueID: e.IssueID, ChangedAt: formatTime(e.ChangedAt), ChangedBy: e.ChangedBy,
+		Attr: e.Attr, OldValue: e.OldValue, NewValue: e.NewValue,
+	})
+}
+
+// formatUnsupported is the refusal of a snapshot in a format this build
+// does not know.
+func formatUnsupported(format int) *tracker.Error {
+	return &tracker.Error{
+		Code:    CodeFormatUnsupported,
+		Message: fmt.Sprintf("the snapshot is in format %d; this tess understands format %d", format, Format),
+		Hint:    "upgrade tess to the version the other copies use",
+	}
 }
 
 // FromFiles parses a tree written by Files back into a snapshot. It is
@@ -142,11 +162,7 @@ func FromFiles(files map[string][]byte) (*Snapshot, error) {
 		return nil, fmt.Errorf("read %s: %w", configPath, err)
 	}
 	if version.Format != Format {
-		return nil, &tracker.Error{
-			Code:    CodeFormatUnsupported,
-			Message: fmt.Sprintf("the snapshot is in format %d; this tess understands format %d", version.Format, Format),
-			Hint:    "upgrade tess to the version the other copies use",
-		}
+		return nil, formatUnsupported(version.Format)
 	}
 
 	s := &Snapshot{

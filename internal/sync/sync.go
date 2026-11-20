@@ -1,7 +1,7 @@
 // Package sync exchanges issues between copies of a tracker over a git ref
 // (docs/design/sync.md). This file is the exported API the acceptance
 // simulator (acceptance/sim) and the CLI use. The snapshot's encoding is in
-// snapshot.go and Load in load.go; Merge and Run are not built yet.
+// snapshot.go, Load in load.go and Merge in merge.go; Run is not built yet.
 package sync
 
 import (
@@ -81,12 +81,6 @@ type Result struct {
 	Fetched, Pushed int
 	Resolved        []Resolution
 	DryRun          bool
-}
-
-// Merge is the pure 3-way merge of sync.md, "The merge". A nil lkg or
-// theirs is an empty snapshot.
-func Merge(lkg, ours, theirs *Snapshot) (*Snapshot, []Resolution, error) {
-	return nil, nil, notBuilt()
 }
 
 // Run is the whole sync: fetch, merge, push with retry, store, move the
