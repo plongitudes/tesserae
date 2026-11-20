@@ -309,10 +309,12 @@ env TESS_NOW=2026-01-01T00:00:00Z
 env TESS_ACTOR=other
 exec tess create 'Other collider 6993' --json
 json stdout .id t-zk0
+env TESS_ACTOR=
 cd ../a
 exec tess create 'Collider' --json
 json stdout .id t-zk0
 exec tess sync
+env TESS_ACTOR=other
 cd ../d
 ! exec tess sync --json
 json stderr .error.code conflict
