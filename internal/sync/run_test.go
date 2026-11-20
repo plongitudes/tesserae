@@ -358,6 +358,49 @@ func TestRunMergesAgainWhenACommandChangedAnIssueDuringTheSync(t *testing.T) {
 	}
 }
 
+// The push went through and the database write did not: the local ref stays
+// at the LKG (sync.md, "The order of 4 and 5 matters"), so the next sync
+// merges the same inputs again.
+func TestAPushedSyncWhoseDatabaseWriteFailsLeavesTheLocalRefAndConvergesNextTime(t *testing.T) {
+	remote, a, b, id := twoCopies(t)
+	b.update("2026-01-02T00:00:00Z", id, tracker.Patch{Title: ptr("From b")})
+	b.sync("2026-01-02T00:01:00Z")
+	ref, remoteRef := refAt(t, a.dir, localRef), refAt(t, remote, localRef)
+
+	// A command on a edits the issue during every attempt.
+	fetches := 0
+	a.now = at("2026-01-02T00:02:00Z")
+	_, err := run(a.ctx, a.options(), settings{lockWait: lockWait, fetched: func() {
+		fetches++
+		a.update("2026-01-02T00:02:00Z", id, tracker.Patch{Priority: ptr(fetches)})
+	}})
+	wantSyncCode(t, err, CodeBusy)
+	if fetches != 3 {
+		t.Errorf("tried %d times, want 3", fetches)
+	}
+	if refAt(t, remote, localRef) == remoteRef {
+		t.Fatalf("the remote did not move: the push is not what failed here")
+	}
+	if got := refAt(t, a.dir, localRef); got != ref {
+		t.Errorf("local ref = %s, want it left at the LKG %s", got, ref)
+	}
+	if got := a.get(id).Title; got != "Shared" {
+		t.Errorf("a's title = %q: the database was written", got)
+	}
+
+	a.sync("2026-01-02T00:03:00Z")
+	if got := a.get(id); got.Title != "From b" || got.Priority != 3 {
+		t.Errorf("a's issue = %q, priority %d; want b's title and a's last priority", got.Title, got.Priority)
+	}
+	if refAt(t, a.dir, localRef) != refAt(t, remote, localRef) {
+		t.Errorf("a's local ref is not the remote's")
+	}
+	wantCounts(t, b.sync("2026-01-02T00:04:00Z"), 1, 0)
+	if got := b.get(id); got.Title != "From b" || got.Priority != 3 {
+		t.Errorf("b's issue = %q, priority %d", got.Title, got.Priority)
+	}
+}
+
 // --- failures leave the copy as it was ----------------------------------------
 
 func TestAFailedPushLeavesTheDatabaseAndTheLocalRefUntouched(t *testing.T) {
