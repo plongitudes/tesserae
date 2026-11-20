@@ -1,7 +1,7 @@
 // Package sync exchanges issues between copies of a tracker over a git ref
-// (docs/design/sync.md). This is the loop-2 starting point: the exported
-// API the acceptance simulator (acceptance/sim) and the CLI use, with
-// nothing behind it yet. The loop fills it in.
+// (docs/design/sync.md). This file is the exported API the acceptance
+// simulator (acceptance/sim) and the CLI use. The snapshot's encoding is in
+// snapshot.go and Load in load.go; Merge and Run are not built yet.
 package sync
 
 import (
@@ -83,19 +83,10 @@ type Result struct {
 	DryRun          bool
 }
 
-// Files is the canonical tree of the snapshot, path to bytes: the same
-// snapshot gives the same bytes on every copy.
-func (s *Snapshot) Files() map[string][]byte { return nil }
-
 // Merge is the pure 3-way merge of sync.md, "The merge". A nil lkg or
 // theirs is an empty snapshot.
 func Merge(lkg, ours, theirs *Snapshot) (*Snapshot, []Resolution, error) {
 	return nil, nil, notBuilt()
-}
-
-// Load reads a database as a snapshot.
-func Load(ctx context.Context, dbPath string) (*Snapshot, error) {
-	return nil, notBuilt()
 }
 
 // Run is the whole sync: fetch, merge, push with retry, store, move the
