@@ -50,6 +50,23 @@ func run(ctx context.Context, o Options, s settings) (*Result, error) {
 	if _, err := os.Stat(o.DBPath); errors.Is(err, fs.ErrNotExist) {
 		return nil, notInitialized()
 	}
+	result, err := locked(ctx, o, s)
+	if err != nil && !o.DryRun && ctx.Err() == nil {
+		// Whatever code the sync failed with, the choice of remote and the
+		// lock included, so the hook and doctor can say why.
+		var refusal *tracker.Error
+		if errors.As(err, &refusal) && refusal.Code != tracker.CodeNotInitialized {
+			// Best effort: the sync has already failed for its own reason.
+			_ = RecordFailure(ctx, o.DBPath, refusal.Code)
+		}
+	}
+	return result, err
+}
+
+// locked chooses the remote, takes the lock and runs the exchange under it.
+// The lock comes after the remote, so a sync with no remote makes no lock
+// file.
+func locked(ctx context.Context, o Options, s settings) (*Result, error) {
 	transport, err := gitref.Open(ctx, o.Dir, o.Remote)
 	if err != nil {
 		return nil, err
@@ -59,16 +76,7 @@ func run(ctx context.Context, o Options, s settings) (*Result, error) {
 		return nil, err
 	}
 	defer release()
-
-	result, err := exchange(ctx, o, s, transport)
-	if err != nil && !o.DryRun && ctx.Err() == nil {
-		var refusal *tracker.Error
-		if errors.As(err, &refusal) && refusal.Code != tracker.CodeNotInitialized {
-			// Best effort: the sync has already failed for its own reason.
-			_ = RecordFailure(ctx, o.DBPath, refusal.Code)
-		}
-	}
-	return result, err
+	return exchange(ctx, o, s, transport)
 }
 
 // exchange is the sync under the lock: up to pushAttempts rounds of load,

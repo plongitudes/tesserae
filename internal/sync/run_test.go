@@ -475,8 +475,21 @@ func TestRunRefusesAnotherTrackersRemote(t *testing.T) {
 func TestRunWithoutARemoteIsNoRemote(t *testing.T) {
 	a := newSyncCopy(t, "")
 	a.create("2026-01-01T00:00:01Z", tracker.NewIssue{Title: "Local"})
-	_, err := Run(a.ctx, a.options())
+	// A dry run writes nothing, its failure included.
+	o := a.options()
+	o.DryRun = true
+	_, err := Run(a.ctx, o)
 	wantSyncCode(t, err, CodeNoRemote)
+	if got := a.config(ConfigLastResult); got != "<unset>" {
+		t.Errorf("sync.last_result = %s after a dry run", got)
+	}
+	// A sync's is recorded like any other code a sync fails with (sync.md,
+	// "Command surface"), so doctor can say why.
+	_, err = Run(a.ctx, a.options())
+	wantSyncCode(t, err, CodeNoRemote)
+	if got := a.config(ConfigLastResult); got != CodeNoRemote {
+		t.Errorf("sync.last_result = %s, want %s", got, CodeNoRemote)
+	}
 
 	// Several remotes and no origin: no_remote until one is named.
 	one, two := newRemote(t), newRemote(t)
@@ -485,7 +498,7 @@ func TestRunWithoutARemoteIsNoRemote(t *testing.T) {
 	_, err = Run(a.ctx, a.options())
 	wantSyncCode(t, err, CodeNoRemote)
 
-	o := a.options()
+	o = a.options()
 	o.Remote = "two"
 	res, err := Run(a.ctx, o)
 	if err != nil {
@@ -534,6 +547,9 @@ func TestRunIsBusyWhileAnotherSyncHoldsTheLock(t *testing.T) {
 	a.wantUntouched(before, "")
 	if refAt(t, remote, localRef) != "" || refAt(t, a.dir, fetchedRef) != "" {
 		t.Errorf("a sync that never got the lock touched a ref")
+	}
+	if got := a.config(ConfigLastResult); got != CodeBusy {
+		t.Errorf("sync.last_result = %s, want %s", got, CodeBusy)
 	}
 
 	release()

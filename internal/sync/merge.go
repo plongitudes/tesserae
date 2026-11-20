@@ -3,6 +3,7 @@ package sync
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -60,7 +61,7 @@ func Merge(lkg, ours, theirs *Snapshot) (*Snapshot, []Resolution, error) {
 	}
 	// In ID order, so that the resolutions, and which collision is reported,
 	// don't depend on map order.
-	for _, id := range sortedKeys(ids) {
+	for _, id := range slices.Sorted(maps.Keys(ids)) {
 		issue, err := m.issue(id)
 		if err != nil {
 			return nil, nil, err
@@ -654,13 +655,4 @@ func smaller[T any](a, b *T, file func(*T) []byte) *T {
 		return a
 	}
 	return b
-}
-
-func sortedKeys(set map[string]bool) []string {
-	keys := make([]string, 0, len(set))
-	for k := range set {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	return keys
 }
