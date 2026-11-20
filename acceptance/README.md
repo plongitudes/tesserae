@@ -142,14 +142,15 @@ dropped t-9f2 blocked_by t-a3f: would make a dependency loop
 fetched 2 issues, pushed 1, resolved 1
 ```
 
-The summary is `fetched N issues, pushed N, resolved N` (`resolved` only when non-zero), `up to date` when nothing moved either way, and `would push N` (plus `would fetch N`) with `--dry-run`. `fetched` counts issues the merge changed from this copy's point of view (new or changed from the remote); `pushed` counts issues changed from the remote's (new or changed here). With `--json`, stdout is:
+The summary is `fetched N issues, pushed N, resolved N` (`issue` when N is 1; `resolved` only when non-zero), `up to date` when nothing moved either way, and `would push N` (plus `would fetch N`) with `--dry-run`. `fetched` counts issues the merge changed from this copy's point of view (new or changed from the remote); `pushed` counts issues changed from the remote's (new or changed here). With `--json`, stdout is:
 
 ```json
 {"remote": "origin", "fetched": 2, "pushed": 1, "dry_run": false,
- "resolved": [ {"issue": "t-a3f", "field": "title", "kept": "From b", "dropped": "From a", "won": "remote", "reason": "later"} ]}
+ "resolved": [ {"issue": "t-a3f", "field": "title", "kept": "From b", "dropped": "From a", "won": "remote", "reason": "later",
+                "kept_at": "2026-01-03T00:00:00Z", "dropped_at": "2026-01-02T00:00:00Z"} ]}
 ```
 
-`field` is a unit of the merge: a scalar field name, `status` (the status and its reason together; `kept`/`dropped` are the status values), or a collection name (`labels`, `blocked_by`, `related`, `discovered_from`) with the element as `kept`/`dropped`. `won` is `local` or `remote`. `reason` is `later` (the later event won), `retired` (dropped because the issue had been retired first; `kept` is the retiring side's value), or `cycle` (a link dropped to keep the hierarchy rules; `field` is `blocked_by` or `parent`, `dropped` the other issue's ID, `kept` null). `resolved` is always an array.
+`field` is a unit of the merge: a scalar field name, `status` (the status and its reason together; `kept`/`dropped` are the status values), or a collection name (`labels`, `blocked_by`, `related`, `discovered_from`) with the element as `kept`/`dropped`. `won` is `local` or `remote`. `reason` is `later` (the later event won), `retired` (dropped because the issue had been retired first; `kept` is the retiring side's value), or `cycle` (a link dropped to keep the hierarchy rules; `field` is `blocked_by` or `parent`, `dropped` the other issue's ID, `kept` null). `kept_at` and `dropped_at` are the times of the events that decided the unit on each side, as the plain output prints them: for `later`, each side's latest new event; for `retired`, `kept_at` is the retire's time; for `cycle`, `dropped_at` is the dropped link's event. Null when that side had no event. `resolved` is always an array.
 
 `--dry-run` fetches, merges and reports; it pushes nothing, writes nothing to the database, and leaves `refs/tess/sync` where it was.
 
@@ -204,7 +205,7 @@ type Issue struct {
 }
 type Comment struct { ID, IssueID, Author, Text string; CreatedAt time.Time }
 type Event struct { ID, IssueID string; ChangedAt time.Time; ChangedBy, Attr string; OldValue, NewValue any }
-type Resolution struct { Issue, Field string; Kept, Dropped any; Won, Reason string }   // as in the JSON above
+type Resolution struct { Issue, Field string; Kept, Dropped any; Won, Reason string; KeptAt, DroppedAt time.Time }   // as in the JSON above; zero time = null
 type Options struct { Dir, DBPath, Remote string; DryRun bool; Now func() time.Time; Actor string }
 type Result struct { Remote string; Fetched, Pushed int; Resolved []Resolution; DryRun bool }
 

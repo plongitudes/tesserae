@@ -90,7 +90,11 @@ func (w *world) checkUnion(snap *tsync.Snapshot) {
 }
 
 // Every unit of every issue holds the value its latest event anywhere gave
-// it, except units a resolution with reason retired or cycle named.
+// it, except units a resolution with reason retired or cycle named. Status
+// and status_reason are one unit: the latest event of either sets both to
+// what the copy that made it held. A collection resolution names the
+// element on whichever side has it (a refused removal keeps the element
+// and drops nothing), so both Kept and Dropped are excused.
 func (w *world) checkLatestEventWins(snap *tsync.Snapshot) {
 	w.t.Helper()
 	dropped := map[string]bool{}
@@ -100,11 +104,20 @@ func (w *world) checkLatestEventWins(snap *tsync.Snapshot) {
 		}
 		switch r.Field {
 		case "labels", "blocked_by", "discovered_from":
-			dropped[r.Issue+"/"+r.Field+"/"+jsonText(r.Dropped)] = true
-		case "related":
-			if other, ok := r.Dropped.(string); ok {
-				dropped["related/"+pairKey(r.Issue, other)] = true
+			for _, e := range []any{r.Kept, r.Dropped} {
+				if e != nil {
+					dropped[r.Issue+"/"+r.Field+"/"+jsonText(e)] = true
+				}
 			}
+		case "related":
+			for _, e := range []any{r.Kept, r.Dropped} {
+				if other, ok := e.(string); ok {
+					dropped["related/"+pairKey(r.Issue, other)] = true
+				}
+			}
+		case "status", "status_reason":
+			dropped[r.Issue+"/status"] = true
+			dropped[r.Issue+"/status_reason"] = true
 		default:
 			dropped[r.Issue+"/"+r.Field] = true
 		}
@@ -158,6 +171,8 @@ func (w *world) checkLatestEventWins(snap *tsync.Snapshot) {
 					delete(want.sets[ev.Attr], jsonValueString(ev.OldValue))
 				}
 			case "related":
+			case "status", "status_reason":
+				want.scalars["status"], want.scalars["status_reason"] = rec.status, rec.reason
 			default:
 				want.scalars[ev.Attr] = jsonText(ev.NewValue)
 			}
