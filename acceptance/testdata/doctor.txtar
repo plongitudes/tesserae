@@ -83,27 +83,27 @@ exec tess doctor
 stdout '^warn +other_trackers'
 exists .beads
 rm .beads
-cp beads-settings.json .claude/settings.json
+cp $WORK/beads-settings.json .claude/settings.json
 exec tess doctor --json
 json stdout .[7].level warn
 stdout 'bd prime'
 json stdout .[6].level info
-cmp .claude/settings.json beads-settings.json
+cmp .claude/settings.json $WORK/beads-settings.json
 exec tess setup claude
 exec tess doctor --json
 json stdout .[7].level warn
 json stdout .[6].level ok
-cp plain-settings.json .claude/settings.json
+cp $WORK/plain-settings.json .claude/settings.json
 exec tess doctor --json
 json stdout .[7].level ok
 
 # The user's own Claude settings are read too, and nothing else.
 mkdir $HOME/.claude
-cp beads-settings.json $HOME/.claude/settings.json
+cp $WORK/beads-settings.json $HOME/.claude/settings.json
 exec tess doctor --json
 json stdout .[7].level warn
 stdout 'bd prime'
-cmp $HOME/.claude/settings.json beads-settings.json
+cmp $HOME/.claude/settings.json $WORK/beads-settings.json
 
 -- beads-settings.json --
 {
