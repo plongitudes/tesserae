@@ -2,15 +2,11 @@
 // (docs/design/sync.md). This file is the exported API the acceptance
 // simulator (acceptance/sim) and the CLI use. The snapshot's encoding is in
 // snapshot.go, Load in load.go, Merge in merge.go and Store, which writes a
-// merged snapshot back, in store.go; Run is not built yet.
+// merged snapshot back, in store.go; Run, the whole sync, in run.go, over the
+// transport in gitref.
 package sync
 
-import (
-	"context"
-	"time"
-
-	"github.com/plongitudes/tesserae/internal/tracker"
-)
+import "time"
 
 // Snapshot is one copy's state as exchanged by sync (sync.md, "The
 // snapshot"). Texts are held as hashes on the issue, bodies in Texts.
@@ -82,18 +78,4 @@ type Result struct {
 	Fetched, Pushed int
 	Resolved        []Resolution
 	DryRun          bool
-}
-
-// Run is the whole sync: fetch, merge, push with retry, store, move the
-// local ref. Errors are *tracker.Error with the codes of sync.md.
-func Run(ctx context.Context, o Options) (*Result, error) {
-	return nil, notBuilt()
-}
-
-func notBuilt() error {
-	return &tracker.Error{
-		Code:    tracker.CodeInvalidArgument,
-		Message: "sync is not built yet",
-		Hint:    "loop 2 builds it (docs/design/sync.md)",
-	}
 }
