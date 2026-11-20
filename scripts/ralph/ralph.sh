@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Ralph loop for tesserae loop 1 (docs/design/build-plan.md): one fresh,
-# sandboxed `claude -p` per plan item, in a worktree on an integration branch,
-# until scripts/ralph/plan.md has no unchecked item and the locked acceptance
-# suite passes. Adapted from super_rando's Scripts/ralph.
+# Ralph loop for tesserae (docs/design/build-plan.md): one fresh, sandboxed
+# `claude -p` per plan item, in a worktree on an integration branch, until
+# scripts/ralph/plan.md has no unchecked item and the locked acceptance suite
+# passes. Adapted from super_rando's Scripts/ralph. Loop 1 (the core) ran
+# from design/v1 on loop/1-core; loop 2 (sync) runs from main on loop/2-sync.
 #
 #   scripts/ralph/ralph.sh [max-iterations]      # run the loop (default 30)
 #   scripts/ralph/ralph.sh --probe               # sandbox smoke test, no plan work
 #
 # Environment:
-#   RALPH_BASE    branch the loop branch is cut from     (default: design/v1)
-#   RALPH_BRANCH  the loop's integration branch          (default: loop/1-core)
+#   RALPH_LOOP    the loop number, names the worktree    (default: 2)
+#   RALPH_BASE    branch the loop branch is cut from     (default: main)
+#   RALPH_BRANCH  the loop's integration branch          (default: loop/2-sync)
 #   RALPH_MODEL   passed to `claude --model` when set
 #
 # Claude only commits. This script, running on the host outside the sandbox,
@@ -25,19 +27,20 @@ if [ "${1:-}" = "--probe" ]; then
   shift
 fi
 max=${1:-30}
-base=${RALPH_BASE:-design/v1}
-branch=${RALPH_BRANCH:-loop/1-core}
+loop=${RALPH_LOOP:-2}
+base=${RALPH_BASE:-main}
+branch=${RALPH_BRANCH:-loop/$loop-sync}
 
 repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 here="$repo/scripts/ralph"
-wt="$repo/../$(basename "$repo")-ralph-loop1"
+wt="$repo/../$(basename "$repo")-ralph-loop$loop"
 state="$repo/.ralph" # gitignored: caches and logs
 mkdir -p "$state/logs"
 
 # Paths the loop may not change. Checked per iteration against the commit it
 # started from, so a human can still edit them between runs.
 locked=(acceptance docs GLOSSARY.md LOOP_PATTERN.md REWRITE_HANDOFF.md go.mod go.sum
-  scripts/ralph/ralph.sh scripts/ralph/check.sh scripts/ralph/prompt.md)
+  scripts/ralph/ralph.sh scripts/ralph/check.sh scripts/ralph/prompt.md scripts/ralph/plan-loop1.md)
 
 # --- worktree -------------------------------------------------------------
 if [ ! -d "$wt" ]; then
@@ -122,7 +125,7 @@ finished() { (cd "$wt" && "$here/check.sh" --strict >/dev/null 2>&1); }
 
 for ((i = 1; i <= max; i++)); do
   if [ "$(unchecked)" -eq 0 ] && finished; then
-    echo "=== plan complete and acceptance suite green: loop 1 done after $((i - 1)) iterations"
+    echo "=== plan complete and acceptance suite green: loop $loop done after $((i - 1)) iterations"
     (cd "$wt" && "$here/check.sh" --strict | tail -3)
     exit 0
   fi

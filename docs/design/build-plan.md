@@ -14,6 +14,10 @@ Everything the loop runs on is in `scripts/ralph/`: `ralph.sh` (the host loop: w
 
 One big loop was rejected: sync bugs are subtle and only appear across machines over time, so a loop would pass weak tests with wrong code; sync would freeze core shapes before they're proven; and drift and review burden grow with spec size.
 
+### Running loop 2
+
+Same machinery, from `main` on `loop/2-sync` (`RALPH_LOOP=2` is the default now; the loop-1 plan is kept as `scripts/ralph/plan-loop1.md`). The spec is [sync.md](sync.md); the suite's loop-2 section, the two new scripts and the simulator in `acceptance/sim/` are locked like the rest. `internal/sync/sync.go` starts as the exported API with nothing behind it, so the tree builds from the first iteration. `check.sh` runs the simulator `-short` per iteration and in full under `--strict`. Added 2026-11-20.
+
 ## Sync testing (loop 2's acceptance suite)
 
 - **Simulator.** Property-based tests run random operation sequences on 2–3 simulated machines, sync in random orders, and check invariants after every run: all machines converge to the same state; nothing retired comes back; no edit is lost unless two edits truly conflicted. Prior art: property-based testing (QuickCheck, Hypothesis) and deterministic simulation testing (FoundationDB, TigerBeetle).
