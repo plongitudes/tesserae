@@ -74,6 +74,20 @@ _Avoid_: epic/subtask (epic is an issue type)
 **Sync**:
 Exchanging issues with other copies of the same tracker over git.
 
+**Copy**:
+One machine's database of the tracker. Worktrees on one machine share a copy.
+_Avoid_: replica, node, peer
+
+**Snapshot**:
+The whole state of one copy at one moment, as exchanged by sync.
+
+**Last known good (LKG)**:
+The snapshot this copy and the remote last agreed on; what a merge compares both sides against. "Good" means agreed, not validated.
+_Avoid_: base, ancestor
+
+**Conflict**:
+Two copies changed the same field of the same issue since the LKG. Changes to different fields of one issue are not a conflict.
+
 **Bridge**:
 A connection that maps issues to and from a remote tracker (GitHub, Jira, and so on). Remote trackers are never the store.
 _Avoid_: backend, plugin, integration
