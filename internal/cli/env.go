@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/plongitudes/tesserae/internal/git"
 	"github.com/plongitudes/tesserae/internal/tracker"
 )
 
@@ -16,31 +18,9 @@ import (
 // (ADR-0003, cli.md).
 const databaseName = "tess.db"
 
-// CodeNotAGitRepo is the code for running tess outside a git repository.
-const codeNotAGitRepo = "not_a_git_repo"
-
-// gitCommonDir returns the absolute path of the git common directory of the
-// repository the working directory is in. Every worktree of a repository
-// has the same one.
-func gitCommonDir(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "git", "rev-parse", "--git-common-dir").Output()
-	if err != nil {
-		if _, lookErr := exec.LookPath("git"); lookErr != nil {
-			return "", fmt.Errorf("tess needs git, and can't find it: %w", lookErr)
-		}
-		return "", &tracker.Error{
-			Code:    codeNotAGitRepo,
-			Message: "this directory is not inside a git repository",
-			Hint:    "run tess inside a repository, or `git init` here first",
-		}
-	}
-	// git answers relative to the working directory, or with a whole path.
-	return filepath.Abs(strings.TrimSuffix(string(out), "\n"))
-}
-
 // databasePath returns where this repository's database is, or would be.
 func databasePath(ctx context.Context) (string, error) {
-	dir, err := gitCommonDir(ctx)
+	dir, err := git.Repo{}.CommonDir(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -112,12 +92,9 @@ func withTracker(ctx context.Context, fn func(tr tracker.Tracker) error) error {
 // worktreeRoot returns the top directory of the worktree the working
 // directory is in: where files meant to be committed go.
 func worktreeRoot(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		if _, err := gitCommonDir(ctx); err != nil {
-			return "", err
-		}
+	root, err := git.Repo{}.WorktreeRoot(ctx)
+	if errors.Is(err, git.ErrNoWorktree) {
 		return "", invalidArgument("this is a git repository, but not inside a working tree", "run this from a checkout of the repository")
 	}
-	return filepath.Abs(strings.TrimSuffix(string(out), "\n"))
+	return root, err
 }
