@@ -270,7 +270,7 @@ json stderr .error.code offline
 exec git remote set-url origin $WORK/remote.git
 
 # A push the remote refuses by policy: push_rejected, and nothing moves.
-cp pre-receive $WORK/remote.git/hooks/pre-receive
+cp $WORK/pre-receive $WORK/remote.git/hooks/pre-receive
 chmod 755 $WORK/remote.git/hooks/pre-receive
 env TESS_NOW=2026-01-10T00:00:00Z
 capture E -- tess create 'Refused' --json
@@ -340,12 +340,12 @@ json stdout .title 'Other collider, recreated'
 # The session-start hook syncs first and reports it as a fact; never on
 # stderr, never a failure.
 env TESS_NOW=2026-01-11T00:00:00Z
-stdin startup.json
+stdin $WORK/startup.json
 exec tess hook session-start
 stdout 'Last sync: just now'
 ! stderr .
 cd ../c
-stdin startup.json
+stdin $WORK/startup.json
 exec tess hook session-start
 stdout 'Last sync: not synced \(prefix_mismatch\)'
 ! stderr .
@@ -353,7 +353,7 @@ cd $WORK
 exec git init -q e
 cd e
 exec tess init --prefix t
-stdin startup.json
+stdin $WORK/startup.json
 exec tess hook session-start
 stdout 'Last sync: never'
 ! stderr .
