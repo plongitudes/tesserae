@@ -13,8 +13,9 @@ import (
 
 // Red-team scenarios: each is a script of operations on named copies,
 // written to break the merge, with expectations checked where they stand
-// and every invariant checked after the copies settle. Add a scenario for
-// every merge bug found; none is ever removed.
+// (so a script syncs, or settles, before expecting another copy's edit) and
+// every invariant checked after the copies settle. Add a scenario for every
+// merge bug found; none is ever removed.
 //
 // Lines:
 //
@@ -25,7 +26,9 @@ import (
 //	COPY: comment NAME TEXT...          COPY: retire NAME          COPY: restore NAME
 //	COPY: sync [dry-run]                COPY: lose-lkg (delete the local sync ref)
 //	COPY: collide NAME COPY NAME        two issues, one on each copy, with one ID (ADR-0023)
-//	expect COPY NAME ATTR VALUE         a scalar unit, VALUE as JSON or a bare string
+//	settle                              sync every copy twice, so all hold the same state
+//	expect COPY NAME ATTR VALUE         a scalar unit, VALUE as JSON or a bare string;
+//	                                    for parent, VALUE may be an issue NAME
 //	expect COPY NAME has|lacks ATTR ELEMENT
 //	expect COPY NAME missing
 //	expect COPY sync CODE               the next sync on COPY fails with CODE
@@ -39,7 +42,8 @@ var scenarios = map[string]string{
 		b: update X title Edited on b
 		a: update X title Edited on a
 		a: update X title X
-		expect a X title "X"
+		settle
+		expect b X title "X"
 	`,
 	"a label removed then re-added survives the other copy's removal": `
 		a: create X
@@ -49,6 +53,7 @@ var scenarios = map[string]string{
 		a: update X remove-label ui
 		b: update X remove-label ui
 		b: update X add-label ui
+		settle
 		expect a X has labels ui
 	`,
 	"three copies, the latest edit anywhere wins": `
@@ -62,6 +67,7 @@ var scenarios = map[string]string{
 		b: sync
 		a: sync
 		c: sync
+		a: sync
 		expect a X title "Fourth"
 	`,
 	"an edit after a retire on the other copy is dropped": `
@@ -70,7 +76,8 @@ var scenarios = map[string]string{
 		b: sync
 		a: retire X
 		b: update X title Too late
-		expect a X title "X"
+		settle
+		expect b X title "X"
 		expect resolved X title retired
 	`,
 	"an edit before a retire on the other copy stands": `
@@ -79,6 +86,7 @@ var scenarios = map[string]string{
 		b: sync
 		b: update X title In time
 		a: retire X
+		settle
 		expect a X title "In time"
 	`,
 	"a later restore lets the other copy's edit stand": `
@@ -88,6 +96,7 @@ var scenarios = map[string]string{
 		a: retire X
 		b: update X title Edited while retired elsewhere
 		a: restore X
+		settle
 		expect a X retired_at null
 		expect a X title "Edited while retired elsewhere"
 	`,
@@ -96,9 +105,9 @@ var scenarios = map[string]string{
 		a: retire X
 		a: sync
 		b: sync
-		a: restore X
 		b: restore X
 		b: retire X
+		a: restore X
 		expect a X retired_at null
 		a: sync
 		b: sync
@@ -111,6 +120,7 @@ var scenarios = map[string]string{
 		b: sync
 		a: link X blocks Y
 		b: link Y blocks X
+		settle
 		expect resolved X blocked_by cycle
 	`,
 	"a parent link made after the other copy's blocks link is the one dropped": `
@@ -120,6 +130,7 @@ var scenarios = map[string]string{
 		b: sync
 		b: link C blocks P
 		a: link P parent-of C
+		settle
 		expect resolved C parent cycle
 		expect a C parent null
 		expect a P has blocked_by C
@@ -132,6 +143,7 @@ var scenarios = map[string]string{
 		b: sync
 		a: link P1 parent-of C
 		b: link P2 parent-of C
+		settle
 		expect a C parent "P2"
 	`,
 	"status and reason travel together": `
@@ -140,6 +152,7 @@ var scenarios = map[string]string{
 		b: sync
 		a: status X held waiting on something
 		b: status X done
+		settle
 		expect a X status "done"
 		expect a X status_reason null
 	`,
@@ -151,6 +164,7 @@ var scenarios = map[string]string{
 		b: sync
 		a: unlink X blocks Y
 		b: update Y title Touched elsewhere
+		settle
 		expect b Y lacks blocked_by X
 	`,
 	"an unlink then a relink on the other copy wins": `
@@ -162,6 +176,7 @@ var scenarios = map[string]string{
 		a: unlink X blocks Y
 		b: unlink X blocks Y
 		b: link X blocks Y
+		settle
 		expect a Y has blocked_by X
 	`,
 	"the same title on two copies is two issues": `
@@ -213,6 +228,7 @@ var scenarios = map[string]string{
 		a: collide X b Y
 		a: sync
 		expect b sync conflict
+		b: sync
 		b: create Z
 		b: retire Y
 		b: sync
@@ -228,6 +244,7 @@ var scenarios = map[string]string{
 		b: sync
 		a: status X done
 		b: link B blocks X
+		settle
 		expect a X status "done"
 		expect a X has blocked_by B
 	`,
@@ -237,6 +254,7 @@ var scenarios = map[string]string{
 		b: sync
 		a: status P omit no longer needed
 		b: create C parent P
+		settle
 		expect a P status "omit"
 		expect a C parent "P"
 	`,
@@ -301,6 +319,12 @@ func (s *scenario) step(line string) {
 	w := s.w
 	if line == "no-settle" {
 		s.settle = false
+		return
+	}
+	if line == "settle" {
+		if !w.settle() {
+			w.fail("an ID collision stopped the settle")
+		}
 		return
 	}
 	if strings.HasPrefix(line, "expect ") {
@@ -400,7 +424,8 @@ func (s *scenario) step(line string) {
 // collide creates NAME on c and NAME2 on c2 so that both get the same ID:
 // the second title is searched for, given the clock's next value. It
 // relies on Create reading the clock once, which the check after the
-// first create confirms.
+// first create confirms. c2's record is the one the scenario retires, so
+// the merge drops it whole (ADR-0023) and its events are not recorded.
 func (s *scenario) collide(c *copy, name string, c2 *copy, name2 string) {
 	w := s.w
 	predicted := w.clock.t.Add(1e9)
@@ -421,6 +446,7 @@ func (s *scenario) collide(c *copy, name string, c2 *copy, name2 string) {
 			break
 		}
 	}
+	w.doomed[id] = c2.name
 	id2, ok := w.create(c2, title, "", nil)
 	if !ok {
 		w.fail("create %s was refused", title)
@@ -472,8 +498,10 @@ func (s *scenario) expect(args []string) {
 			}
 		default:
 			want := strings.Join(args[3:], " ")
-			if other, ok := s.names[strings.Trim(want, `"`)]; ok {
-				want = jsonText(other)
+			if args[2] == "parent" {
+				if other, ok := s.names[strings.Trim(want, `"`)]; ok {
+					want = jsonText(other)
+				}
 			}
 			if got := u.scalars[args[2]]; got != want {
 				w.fail("copy %s %s %s = %s, expected %s", c.name, args[1], args[2], got, want)

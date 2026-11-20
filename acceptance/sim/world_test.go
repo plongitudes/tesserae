@@ -37,6 +37,7 @@ type world struct {
 	comments  map[string]bool          // comment IDs any copy made
 	resolved  []tsync.Resolution       // every resolution any sync reported
 	collision bool                     // a sync was refused with conflict (ADR-0023)
+	doomed    map[string]string        // issue ID -> copy whose record of it the merge drops whole (ADR-0023)
 	prefix    string
 }
 
@@ -50,6 +51,10 @@ type copy struct {
 type recordedEvent struct {
 	issue string
 	ev    tracker.Event
+	// For a status or status_reason event: the issue's stored status and
+	// reason on the copy right after the operation, as JSON text. The two
+	// are one unit of the merge, so the latest event of either decides both.
+	status, reason string
 }
 
 // clock hands out strictly increasing seconds, so no two events share a
@@ -88,6 +93,7 @@ func newWorld(t testing.TB, copies int) *world {
 		events:   map[string]recordedEvent{},
 		bases:    map[string]unitSet{},
 		comments: map[string]bool{},
+		doomed:   map[string]string{},
 		prefix:   "t",
 	}
 	w.git("", "init", "-q", "--bare", w.remote)
@@ -139,10 +145,15 @@ func refused(err error) (string, bool) {
 }
 
 // record notes every event on the issues named that the world hasn't seen
-// yet, and the issue's base state if it is new.
+// yet, and the issue's base state if it is new. Events a copy makes on a
+// record the merge is going to drop whole (a doomed collider) are not
+// noted: no copy keeps them.
 func (w *world) record(c *copy, ids ...string) {
 	w.t.Helper()
 	for _, id := range ids {
+		if w.doomed[id] == c.name {
+			continue
+		}
 		iss, err := c.tr.Get(w.ctx, id, tracker.WithHistory())
 		if err != nil {
 			if _, ok := refused(err); ok {
@@ -153,9 +164,17 @@ func (w *world) record(c *copy, ids ...string) {
 		if _, ok := w.bases[id]; !ok {
 			w.bases[id] = baseUnits(iss)
 		}
+		status := iss.Status
+		if status == "waiting" {
+			status = "ready"
+		}
 		for _, ev := range iss.History {
 			if _, seen := w.events[ev.ID]; !seen {
-				w.events[ev.ID] = recordedEvent{issue: id, ev: ev}
+				rec := recordedEvent{issue: id, ev: ev}
+				if ev.Attr == "status" || ev.Attr == "status_reason" {
+					rec.status, rec.reason = jsonText(status), jsonText(optString(iss.StatusReason))
+				}
+				w.events[ev.ID] = rec
 			}
 		}
 	}
