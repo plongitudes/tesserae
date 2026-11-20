@@ -15,7 +15,7 @@ events/<id>/<event-id>.json        ADR-0013
 texts/<hash>                       ADR-0014
 ```
 
-Git deduplicates unchanged files, so a sync writes only what changed; the 3-way merge runs only on issues both sides touched; comments and events never conflict because each is a new file; and `git log -- issues/<id>.json` on the ref is one issue's history. The store keeps no change tracking: sync serializes every issue, computes git blob hashes in-process, and lets git's tree comparison find what changed.
+The contents of each file, and which issue holds each link, are fixed in [sync.md](../design/sync.md), "The snapshot" (added 2026-11-20); `config.json` carries a `format` number and the prefix. Git deduplicates unchanged files, so a sync writes only what changed; the 3-way merge runs only on issues both sides touched; comments and events never conflict because each is a new file; and `git log -- issues/<id>.json` on the ref is one issue's history. The store keeps no change tracking: sync serializes every issue, computes git blob hashes in-process, and lets git's tree comparison find what changed.
 
 ## Considered options
 

@@ -10,8 +10,9 @@ Commands never touch the network. `tess sync` fetches the sync ref, merges, and 
 ## Rules
 
 - Local ref updates are compare-and-swap (`git update-ref <ref> <new> <expected-old>`); a rejected push re-fetches, re-merges, and retries.
+- The local ref is the last known good snapshot (GLOSSARY): it moves only after a push succeeds and the merged state is in the database, so it is always what this copy and the remote last agreed on ([sync.md](../design/sync.md), added 2026-11-20).
 - A plain `git push` never carries the ref. We don't add a push refspec (it would stop `git push` pushing the current branch) or a pre-push hook.
-- Issues are exactly as private as the remote: anyone who can read the repo can fetch the ref. `tess init` and the first `tess sync` warn when the remote is public.
+- Issues are exactly as private as the remote: anyone who can read the repo can fetch the ref. `tess init` and the first `tess sync` warn when the remote is public. (The warning is deferred past loop 2, 2026-11-20: it needs a definition of "public" that doesn't need the network. Tracked as an issue in the tesserae tracker.)
 
 ## Considered options
 

@@ -14,9 +14,11 @@ date: 2026-11-12
 | `github.com/oklog/ulid/v2` v2.1 | event IDs | [ADR-0013](0013-field-level-event-log.md) specifies ULIDs; sortable by time, no coordination. |
 | `github.com/rogpeppe/go-internal` v1.16 | the acceptance harness (`testscript`) | Test-only. The old `bd` behavioural spec was testscript files too. |
 
-Everything else is the standard library: SHA-256 and base36 for issue IDs ([ADR-0017](0017-flat-immutable-ids.md)) and text hashes ([ADR-0014](0014-content-addressed-text.md)), `encoding/json`, ANSI escape codes written directly for colour, `golang.org/x/term`-free TTY detection via `os.File.Stat` mode bits.
+Everything else is the standard library (git is used through the user's `git` binary, see below): SHA-256 and base36 for issue IDs ([ADR-0017](0017-flat-immutable-ids.md)) and text hashes ([ADR-0014](0014-content-addressed-text.md)), `encoding/json`, ANSI escape codes written directly for colour, `golang.org/x/term`-free TTY detection via `os.File.Stat` mode bits.
 
 ## Rules
+
+- Sync (loop 2, added 2026-11-20) shells out to the user's `git` binary for fetch, push, refs and objects, and adds no module for it. go-git would reimplement the authentication, transports and credential helpers the user already has configured, and the plumbing needed is a dozen commands ([sync.md](../design/sync.md), "Git").
 
 - Adding a dependency is a design decision: a new ADR, or an amendment here, made by a human outside the loop.
 - `go.mod` and `go.sum` are locked for the loop. `go mod tidy` and `go get` are not run inside it; the host fills the module cache from `go.mod` before each iteration.

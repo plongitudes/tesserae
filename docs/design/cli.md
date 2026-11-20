@@ -58,14 +58,18 @@ tess unlink A TYPE B                   same forms as link
 
 tess comment ID TEXT                   or "-" to read stdin
 tess import PATH                       old bd issues.jsonl
-tess sync                              fetch, merge, push the sync ref (ADR-0012)
+tess sync [--remote NAME] [--dry-run] fetch, merge, push the sync ref (ADR-0012, sync.md);
+                                       remote defaults to origin, else the only remote;
+                                       --dry-run fetches and reports, writes nothing
+tess doctor [--remote]                 check the setup: git, database, remote, sync state, hooks,
+                                       other trackers; --remote also tests the remote is reachable
 tess setup claude [--check|--remove]   write the Claude Code skill + hooks (ADR-0019)
 tess hook session-start|session-end    plumbing called by those hooks; not shown in orientation
 tess                                   no arguments: orientation, one line per working command
                                        (everything above except init, import, setup, hook)
 ```
 
-`tess hook` is what `setup claude` installs in `.claude/settings.json`: `SessionStart` (matcher `startup|resume|compact`) runs `tess hook session-start`, which reads the hook's JSON from stdin, runs `tess sync` with a short timeout unless `source` is `compact`, then prints 3–6 lines of facts (ready count, in-progress count, last sync) and never instructions; it prints nothing when the repo has no database and always exits 0. `SessionEnd` runs `tess hook session-end`, which starts a detached `tess sync` and exits at once. Both commands are wrapped so a missing `tess` binary fails quietly (ADR-0019, scope notes). In loop 1, where `sync` is a stub, `session-start` skips the sync and `session-end` does nothing.
+`tess hook` is what `setup claude` installs in `.claude/settings.json`: `SessionStart` (matcher `startup|resume|compact`) runs `tess hook session-start`, which reads the hook's JSON from stdin, runs `tess sync` with a short timeout unless `source` is `compact`, then prints 3–6 lines of facts (ready count, in-progress count, last sync) and never instructions; it prints nothing when the repo has no database and always exits 0. `SessionEnd` runs `tess hook session-end`, which starts a detached `tess sync` and exits at once. Both commands are wrapped so a missing `tess` binary fails quietly (ADR-0019, scope notes). The sync in `session-start` has a ten-second deadline; `no_remote`, `offline`, `busy` and the deadline are reported in the `Last sync` fact, never as a failure ([sync.md](sync.md), Hooks).
 
 Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), `cycles` (`link` refuses to create one; `import` reports any it finds).
 
@@ -94,6 +98,7 @@ Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), 
 - Errors go to stderr. With `--json`, stderr is `{"error": {"code": "...", "message": "...", "hint": "..."}}` and `code` is stable (`not_found`, `ambiguous_id`, `cycle`, `retired`, ...). Exit status is non-zero.
 - Two kinds of error, two shapes in plain mode. A command-line error (wrong number of arguments, unknown command or flag, bad flag value; code `invalid_argument`) prints `error: ...`, then `usage: tess link A TYPE B` (the command's use line), then `run 'tess link --help' for examples`; in JSON the `hint` is the use line. A refusal from the tracker (`not_found`, `cycle`, `blocked`, ...) prints `error: ...` and a `hint:` naming the next command to try. Usage for syntax, hints for next steps, as git and cargo do.
 - `tess ready` on a TTY with no results prints `no ready issues` and a hint on stderr; when piped it prints nothing, so pipelines stay clean.
+- `tess sync` prints one `resolved ...` or `dropped ...` line per conflict it settled, then one summary line (`fetched 12 issues, pushed 3, resolved 1`, or `up to date`). `tess doctor` prints one line per check at one of four levels, `ok`, `info`, `warn`, `fail`, with a `fix:` line under a warn or fail; `info` is a fact that is not a problem (no remote, never synced). Exit 1 only on a `fail`. Shapes and codes: [sync.md](sync.md), [acceptance/README.md](../../acceptance/README.md).
 - Partial IDs are accepted everywhere an ID is.
 - Lists (`ready`, `list`) are hierarchical by default on a TTY: each issue appears under its ancestors, which show as dimmed section headers (context, not results), children indented. `--flat` gives one line per issue with no headers, and is the default when stdout isn't a TTY, so `grep`/`awk` pipelines just work; `--tree` forces the hierarchy. `-n` counts results, not headers. Results sort by priority within each group; groups sort by their best result.
 - `--json` is always a flat array; each issue carries `parent` (and `ancestors`), and nesting is left to the consumer.
@@ -109,4 +114,5 @@ Not in v1: `stats`, `export`, `quickstart`/`prime` (agent context integration), 
 - Status changes go through `tess status` only, not `update` ([ADR-0018](../adr/0018-one-status-command.md)). `waiting` can't be set; it's how `ready` displays when blocked.
 - `--tree` means the same thing on `list` and `show`: place the issue in its hierarchy. `list --tree` puts results under their ancestors; `show --tree` prints the issue (whose `ancestors` it already lists) and then what hangs off it, children and blockers, nested. There is no separate `tree` command (dogfood checkpoint, 2026-11-16).
 - A `blocks` link between an issue and its own ancestor or descendant is refused with code `cycle` in both directions ([ADR-0016](../adr/0016-hierarchy-rules.md)): a child already holds its parent, and a blocked ancestor blocks its descendants, so either direction is a dependency the issue could never satisfy.
+- No ordinary command mentions sync state. "Issues changed since the last sync" appears in `doctor` and the session-start facts, nowhere else (loop 2 design session, 2026-11-20).
 - `show --field F` prints the raw value: text exactly as stored, scalars plainly, `null` as nothing; with `--json`, the value as JSON. `F` is any key of the issue object, so `tess show ID --field notes > notes.md` and `tess update ID --notes - --append < more.md` round-trip without re-sending.

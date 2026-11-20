@@ -43,7 +43,7 @@ What people and agents need to be able to do, independent of CLI verbs. The verb
 
 ## Housekeeping
 
-Set up a repo, import from `bd`, sync.
+Set up a repo, import from `bd`, sync, check the setup.
 
 ## Mapping to commands
 
@@ -55,8 +55,8 @@ Set up a repo, import from `bd`, sync.
 | 12–14 | `update` |
 | 15 | `comment` |
 | 16 | `link` / `unlink` |
-| 17–19 | `show`, `list`, `ready`, `tree` |
-| Housekeeping | `init`, `import`, `sync` |
+| 17–19 | `show`, `list`, `ready` (`show --tree` for the tree) |
+| Housekeeping | `init`, `import`, `sync`, `doctor` |
 
 ## Out of v1
 
