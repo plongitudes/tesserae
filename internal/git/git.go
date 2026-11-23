@@ -37,6 +37,11 @@ var ErrNoWorktree = errors.New("inside a git repository, but not inside a workin
 
 // Repo is a git repository, named by any directory inside it. An empty Dir
 // is the process's working directory.
+//
+// Git gets the process's whole environment, so GIT_DIR, GIT_WORK_TREE and
+// the like, when set, name the repository instead of Dir. For the CLI that
+// is what a user who sets them means; a caller that names a Dir and runs
+// with those set would get the wrong repository. Nothing sets them today.
 type Repo struct {
 	Dir string
 }
