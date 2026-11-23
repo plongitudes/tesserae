@@ -38,6 +38,16 @@ func (l link) compare(o link) int {
 // copy enforces (ADR-0016, ADR-0022): while a rule is broken, the latest of
 // the links that break it and are new since the LKG is dropped and reported.
 // It runs over every issue, retired ones too.
+//
+// A dropped link is reported twice in all: once by the copy whose merge
+// dropped it, and once more by the copy that made it, when that copy next
+// syncs. The drop is reported, not recorded (ADR-0021), so the making copy
+// still holds the link, its add event is on both sides, and the fallback
+// for a unit with no deciding event brings the link back for this pass to
+// drop again. Each line is about that copy's own database, and a copy that
+// never held the link prints nothing, so there is no third report. A merge
+// that wrote a removal event for the drop would end at one; that is a v2
+// change to the event log.
 func (m *merger) structure(out *Snapshot) {
 	for {
 		broken := violations(out)
