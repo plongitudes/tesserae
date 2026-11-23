@@ -58,11 +58,37 @@ func wantLevel(t *testing.T, checks map[string]check, name, level string) check 
 // is, and returns nothing: the check only looks for it.
 func tessOnPath(t *testing.T) {
 	t.Helper()
-	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "tess"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+	t.Setenv("PATH", filepath.Dir(thisTess(t))+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// thisTess makes an executable called tess in a fresh directory and has
+// doctor take it for the binary that is running. The directory is not on
+// PATH.
+func thisTess(t *testing.T) string {
+	t.Helper()
+	path := fakeTess(t)
+	prev := executable
+	executable = func() (string, error) { return path, nil }
+	t.Cleanup(func() { executable = prev })
+	return path
+}
+
+// fixText is a check's fix, "" when there is none.
+func fixText(c check) string {
+	if c.Fix == nil {
+		return ""
+	}
+	return *c.Fix
+}
+
+// fakeTess writes an executable called tess into a fresh directory.
+func fakeTess(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "tess")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return path
 }
 
 // onlyGitOnPath leaves PATH with git and nothing else, so no tess.
@@ -302,6 +328,74 @@ func TestDoctorHooksAreOkOnceSetUpAndTessIsOnPath(t *testing.T) {
 	tessOnPath(t)
 	checks, _ = doctor(t, 0)
 	wantLevel(t, checks, "hooks", "ok")
+}
+
+func TestDoctorHooksNameThisBinaryDirectoryWhenNoTessIsOnPath(t *testing.T) {
+	inInitialisedRepo(t)
+	must(t, "setup", "claude")
+	onlyGitOnPath(t)
+	self := thisTess(t)
+	checks, _ := doctor(t, 0)
+	c := wantLevel(t, checks, "hooks", "warn")
+	if !strings.Contains(c.Detail, "PATH") || !strings.Contains(fixText(c), filepath.Dir(self)) {
+		t.Errorf("hooks = %q fix %q, want the directory of the running binary in the fix", c.Detail, fixText(c))
+	}
+}
+
+func TestDoctorHooksWarnWhenPathWouldRunADifferentTess(t *testing.T) {
+	inInitialisedRepo(t)
+	must(t, "setup", "claude")
+	onlyGitOnPath(t)
+	self := thisTess(t)
+	other := fakeTess(t)
+	t.Setenv("PATH", filepath.Dir(other)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	checks, _ := doctor(t, 0)
+	c := wantLevel(t, checks, "hooks", "warn")
+	if !strings.Contains(c.Detail, other) || !strings.Contains(c.Detail, self) {
+		t.Errorf("hooks detail is %q, want both %s and %s", c.Detail, other, self)
+	}
+	if !strings.Contains(fixText(c), filepath.Dir(self)) {
+		t.Errorf("fix is %q, want the running binary's directory", fixText(c))
+	}
+
+	// A symlink to the running binary is the same binary.
+	link := filepath.Join(t.TempDir(), "tess")
+	if err := os.Symlink(self, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Dir(link)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	checks, _ = doctor(t, 0)
+	wantLevel(t, checks, "hooks", "ok")
+}
+
+func TestDoctorReadsTheUserSettingsFromClaudeConfigDir(t *testing.T) {
+	inInitialisedRepo(t)
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	user := filepath.Join(dir, "settings.json")
+	writeFile(t, user, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bd prime"}]}]}}`)
+	checks, _ := doctor(t, 0)
+	if c := wantLevel(t, checks, "other_trackers", "warn"); !strings.Contains(c.Detail, "bd prime") || !strings.Contains(c.Detail, user) {
+		t.Errorf("detail is %q, want the file under CLAUDE_CONFIG_DIR", c.Detail)
+	}
+	if got := fileText(t, user); !strings.Contains(got, "bd prime") {
+		t.Errorf("doctor changed the user settings:\n%s", got)
+	}
+}
+
+func TestDoctorReadsTheLocalSettingsToo(t *testing.T) {
+	inInitialisedRepo(t)
+	if err := os.Mkdir(".claude", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	local := filepath.Join(".claude", "settings.local.json")
+	writeFile(t, local, `{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"beads sync"}]}]}}`)
+	checks, _ := doctor(t, 0)
+	if c := wantLevel(t, checks, "other_trackers", "warn"); !strings.Contains(c.Detail, "beads sync") || !strings.Contains(c.Detail, ".claude/settings.local.json") {
+		t.Errorf("detail is %q, want the local file and the command", c.Detail)
+	}
+	// The local file is personal: the hooks check does not look for tess's hooks there.
+	wantLevel(t, checks, "hooks", "info")
 }
 
 func TestDoctorHooksWarnWhenOnlyOneOfTheTwoIsThere(t *testing.T) {

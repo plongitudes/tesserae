@@ -327,31 +327,80 @@ func (r *report) hooks(root string) {
 		r.add(name, levelWarn, fmt.Sprintf("%s has the %s hook but not %s", settingsPath,
 			strings.Join(present, ", "), strings.Join(absent, ", ")), "tess setup claude")
 	default:
-		if _, err := exec.LookPath("tess"); err != nil {
-			r.add(name, levelWarn, "set up in "+settingsPath+", but tess is not on PATH, so they do nothing",
-				"put the tess binary in a directory on PATH")
-			return
+		// The hooks run whatever `tess` PATH finds. Is that this binary?
+		self, selfErr := executable()
+		found, lookErr := exec.LookPath("tess")
+		switch {
+		case lookErr != nil:
+			fix := "put the tess binary in a directory on PATH"
+			if selfErr == nil {
+				fix = "put " + filepath.Dir(self) + " on PATH, or copy " + self + " into a directory that is"
+			}
+			r.add(name, levelWarn, "set up in "+settingsPath+", but tess is not on PATH, so they do nothing", fix)
+		case selfErr == nil && !sameFile(self, found):
+			r.add(name, levelWarn, fmt.Sprintf("set up in %s, but the hooks will run %s, not this tess (%s)", settingsPath, found, self),
+				"put "+filepath.Dir(self)+" ahead of "+filepath.Dir(found)+" on PATH, or replace "+found)
+		default:
+			r.add(name, levelOK, "set up in "+settingsPath, "")
 		}
-		r.add(name, levelOK, "set up in "+settingsPath, "")
 	}
+}
+
+// executable is os.Executable, a variable so tests can be a tess elsewhere.
+var executable = os.Executable
+
+// sameFile reports whether two paths are one file, symlinks followed.
+func sameFile(a, b string) bool {
+	sa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	sb, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(sa, sb)
+}
+
+// userSettingsFile is the user's Claude settings file: under
+// CLAUDE_CONFIG_DIR when that is set, else ~/.claude. The label is how
+// doctor names it.
+func userSettingsFile() (path, label string, ok bool) {
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		path = filepath.Join(dir, "settings.json")
+		return path, path, true
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", false
+	}
+	return filepath.Join(home, filepath.FromSlash(settingsPath)), "~/" + settingsPath, true
 }
 
 // otherTracker matches a hook command that names bd or beads.
 var otherTracker = regexp.MustCompile(`\b(bd|beads)\b`)
 
+// localSettingsPath is the personal, uncommitted settings file beside
+// settingsPath. tess writes nothing there; doctor reads it for other
+// trackers' hooks only.
+const localSettingsPath = ".claude/settings.local.json"
+
 // otherTrackers looks for another issue tracker working beside tess: its
-// hooks on the events tess uses, in the repository's Claude settings or
-// the user's, or its directory at the top of the worktree. It reads those
-// two files and that directory's name, and changes nothing.
+// hooks on the events tess uses, in the repository's Claude settings
+// (shared and local) or the user's, or its directory at the top of the
+// worktree. It reads those three files and that directory's name, and
+// changes nothing.
 func (r *report) otherTrackers(root string) {
 	const name = "other_trackers"
 	type file struct{ label, path string }
 	var files []file
 	if root != "" {
-		files = append(files, file{settingsPath, filepath.Join(root, filepath.FromSlash(settingsPath))})
+		files = append(files,
+			file{settingsPath, filepath.Join(root, filepath.FromSlash(settingsPath))},
+			file{localSettingsPath, filepath.Join(root, filepath.FromSlash(localSettingsPath))})
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != root {
-		files = append(files, file{"~/" + settingsPath, filepath.Join(home, filepath.FromSlash(settingsPath))})
+	if path, label, ok := userSettingsFile(); ok && (root == "" || path != filepath.Join(root, filepath.FromSlash(settingsPath))) {
+		files = append(files, file{label, path})
 	}
 	var found []string
 	for _, f := range files {

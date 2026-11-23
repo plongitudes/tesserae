@@ -53,7 +53,7 @@ func setup(e *testscript.Env) error {
 	e.Setenv("GIT_CONFIG_GLOBAL", gitconfig)
 	e.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	e.Setenv("TESS_NOW", "2026-01-01T00:00:00Z")
-	for _, v := range []string{"TESS_ACTOR", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_REMOTE", "NO_COLOR"} {
+	for _, v := range []string{"TESS_ACTOR", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_REMOTE", "CLAUDE_CONFIG_DIR", "NO_COLOR"} {
 		e.Setenv(v, "")
 	}
 	return nil
