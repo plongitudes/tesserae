@@ -41,7 +41,7 @@ func newCopy(t *testing.T, remote string) (string, *Transport) {
 	dir := t.TempDir()
 	run(t, dir, "init", "-q", ".")
 	run(t, dir, "remote", "add", "origin", remote)
-	tr, err := Open(ctx, dir, "")
+	tr, err := Open(ctx, git.Repo{Dir: dir}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,14 +140,14 @@ func TestChooseWithSeveralRemotesHintsAtNamingOne(t *testing.T) {
 }
 
 func TestOpenOutsideARepositoryIsNotAGitRepo(t *testing.T) {
-	_, err := Open(ctx, t.TempDir(), "")
+	_, err := Open(ctx, git.Repo{Dir: t.TempDir()}, "")
 	wantCode(t, err, git.CodeNotAGitRepo)
 }
 
 func TestOpenWithoutARemoteIsNoRemote(t *testing.T) {
 	dir := t.TempDir()
 	run(t, dir, "init", "-q", ".")
-	_, err := Open(ctx, dir, "")
+	_, err := Open(ctx, git.Repo{Dir: dir}, "")
 	wantCode(t, err, CodeNoRemote)
 }
 
@@ -248,7 +248,7 @@ func TestPushWithOneRefAbsentHasOneParent(t *testing.T) {
 	// the LKG.
 	other := newBare(t)
 	run(t, a.repo.Dir, "remote", "add", "other", other)
-	toOther, err := Open(ctx, a.repo.Dir, "other")
+	toOther, err := Open(ctx, git.Repo{Dir: a.repo.Dir}, "other")
 	if err != nil {
 		t.Fatal(err)
 	}

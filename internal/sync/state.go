@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/plongitudes/tesserae/internal/git"
 	"github.com/plongitudes/tesserae/internal/store/sqlite"
+
 	"github.com/plongitudes/tesserae/internal/sync/gitref"
 )
 
@@ -97,7 +99,7 @@ func ReadState(ctx context.Context, dir, dbPath string) (*State, error) {
 // the network, and a remote that can't be reached is offline. A remote
 // that holds no issues yet is reachable.
 func FindRemote(ctx context.Context, dir, name string, reach bool) (string, error) {
-	transport, err := gitref.Open(ctx, dir, name)
+	transport, err := gitref.Open(ctx, git.Repo{Dir: dir}, name)
 	if err != nil {
 		return "", err
 	}

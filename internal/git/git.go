@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/plongitudes/tesserae/internal/tracker"
 )
@@ -44,7 +45,17 @@ var ErrNoWorktree = errors.New("inside a git repository, but not inside a workin
 // with those set would get the wrong repository. Nothing sets them today.
 type Repo struct {
 	Dir string
+	// NoPrompt keeps git from asking for a username or password on the
+	// terminal (GIT_TERMINAL_PROMPT=0), so a caller with no terminal, the
+	// session-start hook, fails at once instead of waiting on a prompt
+	// nobody sees. Credential helpers, keychains and agents still run.
+	NoPrompt bool
 }
+
+// waitDelay bounds how long run waits, once git has exited or the context
+// has ended, for a child of git's (a credential helper, ssh) that still
+// holds git's output pipe. Without it a hook could outlive its deadline.
+const waitDelay = 2 * time.Second
 
 // Remote is one configured remote.
 type Remote struct {
@@ -68,11 +79,16 @@ func (f *failure) Error() string {
 func (r Repo) run(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.Dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.Env = r.env()
+	cmd.WaitDelay = waitDelay
 	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// git itself exited 0; a child of its kept the pipe. Its output is in.
+		err = nil
+	}
 	if err == nil {
 		return stdout.Bytes(), nil
 	}
@@ -87,6 +103,29 @@ func (r Repo) run(ctx context.Context, stdin io.Reader, args ...string) ([]byte,
 		return nil, fmt.Errorf("tess needs git, and can't find it: %w", err)
 	}
 	return nil, fmt.Errorf("git %s: %w", args[0], err)
+}
+
+// env is the environment git runs with: the process's own, with LC_ALL=C
+// so git's wording can be read, and the prompt off when NoPrompt is set.
+func (r Repo) env() []string {
+	env := append(os.Environ(), "LC_ALL=C")
+	if r.NoPrompt {
+		env = append(env, "GIT_TERMINAL_PROMPT=0")
+	}
+	return env
+}
+
+// UserName is git's user.name as configured for this repository, or ""
+// when none is set.
+func (r Repo) UserName(ctx context.Context) (string, error) {
+	out, err := r.run(ctx, nil, "config", "user.name")
+	if exitCode(err) == 1 { // unset
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // exitCode is the exit status of a git process that failed, or 0 for any

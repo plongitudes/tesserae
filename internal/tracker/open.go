@@ -65,7 +65,7 @@ func Init(ctx context.Context, path, prefix string) error {
 // refused with not_initialized, and Open never creates one.
 func Open(ctx context.Context, path string, now func() time.Time, actor string) (Tracker, func() error, error) {
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		return nil, nil, notInitialized()
+		return nil, nil, NotInitialized()
 	} else if err != nil {
 		return nil, nil, err
 	}
@@ -75,7 +75,7 @@ func Open(ctx context.Context, path string, now func() time.Time, actor string) 
 	}
 	_, ok, err := store.Config(ctx, configPrefix)
 	if err == nil && !ok {
-		err = notInitialized()
+		err = NotInitialized()
 	}
 	if err != nil {
 		store.Close()
@@ -84,7 +84,9 @@ func Open(ctx context.Context, path string, now func() time.Time, actor string) 
 	return New(store, now, actor), store.Close, nil
 }
 
-func notInitialized() *Error {
+// NotInitialized is the error for a repository with no tess database:
+// the one wording, used by the tracker and by sync.
+func NotInitialized() *Error {
 	return &Error{
 		Code:    CodeNotInitialized,
 		Message: "this repository has no tess database yet; run `tess init` to create one",

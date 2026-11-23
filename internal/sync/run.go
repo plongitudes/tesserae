@@ -48,7 +48,7 @@ func run(ctx context.Context, o Options, s settings) (*Result, error) {
 		o.Now = time.Now
 	}
 	if _, err := os.Stat(o.DBPath); errors.Is(err, fs.ErrNotExist) {
-		return nil, notInitialized()
+		return nil, tracker.NotInitialized()
 	}
 	result, err := locked(ctx, o, s)
 	if err != nil && !o.DryRun && ctx.Err() == nil {
@@ -68,7 +68,7 @@ func run(ctx context.Context, o Options, s settings) (*Result, error) {
 // The lock comes after the remote, so a sync with no remote makes no lock
 // file.
 func locked(ctx context.Context, o Options, s settings) (*Result, error) {
-	transport, err := gitref.Open(ctx, o.Dir, o.Remote)
+	transport, err := gitref.Open(ctx, git.Repo{Dir: o.Dir, NoPrompt: o.NoPrompt}, o.Remote)
 	if err != nil {
 		return nil, err
 	}

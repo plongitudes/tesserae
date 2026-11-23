@@ -61,8 +61,7 @@ func (t Tree) Present() bool { return t.Commit != "" }
 // named, or the default remote when name is empty: origin, else the only
 // remote. The errors are *tracker.Error: not_a_git_repo, and CodeNoRemote
 // when there is no such remote, none at all, or several and no origin.
-func Open(ctx context.Context, dir, name string) (*Transport, error) {
-	repo := git.Repo{Dir: dir}
+func Open(ctx context.Context, repo git.Repo, name string) (*Transport, error) {
 	if _, err := repo.CommonDir(ctx); err != nil {
 		return nil, err
 	}

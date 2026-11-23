@@ -73,6 +73,9 @@ type Options struct {
 	DryRun              bool
 	Now                 func() time.Time
 	Actor               string
+	// NoPrompt keeps git from asking for a password on the terminal: for
+	// a caller with no terminal, such as the session-start hook.
+	NoPrompt bool
 }
 
 // Result is what a sync did (acceptance/README.md, "Sync output").

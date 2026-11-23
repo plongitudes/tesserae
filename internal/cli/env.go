@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/plongitudes/tesserae/internal/git"
@@ -58,10 +56,8 @@ func actor(ctx context.Context) string {
 		}
 		return "claude:" + session
 	}
-	if out, err := exec.CommandContext(ctx, "git", "config", "user.name").Output(); err == nil {
-		if name := strings.TrimSpace(string(out)); name != "" {
-			return name
-		}
+	if name, err := (git.Repo{}).UserName(ctx); err == nil && name != "" {
+		return name
 	}
 	if name := os.Getenv("USER"); name != "" {
 		return name

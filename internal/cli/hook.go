@@ -44,7 +44,9 @@ func startDetached(program string, args ...string) error {
 }
 
 // timedOut is what the Last sync fact says in place of a code when the
-// deadline ended the sync.
+// deadline ended the sync; the fact adds a hint to run `tess sync`, since
+// a login prompt may have been waiting (the sync runs git with its
+// terminal prompt off, but a credential helper can still ask).
 const timedOut = "timed out"
 
 // syncBeforeFacts brings the issues up to date before they are counted,
@@ -56,7 +58,7 @@ const timedOut = "timed out"
 func syncBeforeFacts(ctx context.Context, path string, now func() time.Time) string {
 	ctx, cancel := context.WithTimeout(ctx, syncDeadline)
 	defer cancel()
-	_, err := sync.Run(ctx, sync.Options{DBPath: path, Now: now, Actor: actor(ctx)})
+	_, err := sync.Run(ctx, sync.Options{DBPath: path, Now: now, Actor: actor(ctx), NoPrompt: true})
 	var refusal *tracker.Error
 	switch {
 	case err == nil:
@@ -74,6 +76,11 @@ func syncBeforeFacts(ctx context.Context, path string, now func() time.Time) str
 func lastSync(ctx context.Context, path string, now time.Time, ran bool, failed string) (string, error) {
 	if ran && failed == "" {
 		return "just now", nil
+	}
+	if failed == timedOut {
+		// A login prompt may have been waiting on the user; only a sync
+		// with a terminal can finish it.
+		failed += "; run tess sync to finish any login"
 	}
 	state, err := sync.ReadState(ctx, "", path)
 	if err != nil {

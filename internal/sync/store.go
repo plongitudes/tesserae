@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/plongitudes/tesserae/internal/store/sqlite"
+	"github.com/plongitudes/tesserae/internal/tracker"
 )
 
 // The config keys that record a copy's last sync. They are per copy and
@@ -82,7 +83,7 @@ func RecordFailure(ctx context.Context, dbPath, code string) error {
 		if _, ok, err := sqlite.ConfigIn(ctx, tx, "prefix"); err != nil {
 			return err
 		} else if !ok {
-			return notInitialized()
+			return tracker.NotInitialized()
 		}
 		return sqlite.SetConfig(ctx, tx, ConfigLastResult, code)
 	})

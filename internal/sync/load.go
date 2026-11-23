@@ -43,19 +43,11 @@ func Load(ctx context.Context, dbPath string) (*Snapshot, error) {
 // create the file, and sync never makes a database.
 func openExisting(ctx context.Context, dbPath string) (*sqlite.Store, error) {
 	if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
-		return nil, notInitialized()
+		return nil, tracker.NotInitialized()
 	} else if err != nil {
 		return nil, err
 	}
 	return sqlite.Open(ctx, dbPath)
-}
-
-func notInitialized() *tracker.Error {
-	return &tracker.Error{
-		Code:    tracker.CodeNotInitialized,
-		Message: "this repository has no tess database yet; run `tess init` to create one",
-		Hint:    "run `tess init`",
-	}
 }
 
 func loadIn(ctx context.Context, tx *sql.Tx) (*Snapshot, error) {
@@ -64,7 +56,7 @@ func loadIn(ctx context.Context, tx *sql.Tx) (*Snapshot, error) {
 		return nil, err
 	}
 	if !ok {
-		return nil, notInitialized()
+		return nil, tracker.NotInitialized()
 	}
 	s := &Snapshot{
 		Config:   Config{Format: Format, Prefix: prefix},

@@ -174,7 +174,7 @@ With `--json`, stdout is an array of `{"check", "level", "detail", "fix"}` in th
 
 ### Hooks
 
-`tess hook session-start` runs the sync first (ten-second deadline, unless `source` is `compact`) and its `Last sync` fact becomes `Last sync: just now` after a success, `Last sync: never` when the copy has never synced and the sync could not run (no remote), and `Last sync: not synced (<code>)` when the sync failed for another reason; a copy that synced before and fails now says `Last sync: <when>, not synced now (<code>)`. "Just now" is under a minute by the clock. The hook still exits 0 and prints nothing to stderr.
+`tess hook session-start` runs the sync first (ten-second deadline, unless `source` is `compact`) and its `Last sync` fact becomes `Last sync: just now` after a success, `Last sync: never` when the copy has never synced and the sync could not run (no remote), and `Last sync: not synced (<code>)` when the sync failed for another reason; a copy that synced before and fails now says `Last sync: <when>, not synced now (<code>)`. When the ten-second deadline ended the sync, the code reads `timed out; run tess sync to finish any login`, since a credential prompt may have been waiting on the user. The hook runs git with its terminal prompt off. "Just now" is under a minute by the clock. The hook still exits 0 and prints nothing to stderr.
 
 ### The simulator (`sim/`)
 
@@ -206,7 +206,7 @@ type Issue struct {
 type Comment struct { ID, IssueID, Author, Text string; CreatedAt time.Time }
 type Event struct { ID, IssueID string; ChangedAt time.Time; ChangedBy, Attr string; OldValue, NewValue any }
 type Resolution struct { Issue, Field string; Kept, Dropped any; Won, Reason string; KeptAt, DroppedAt time.Time }   // as in the JSON above; zero time = null
-type Options struct { Dir, DBPath, Remote string; DryRun bool; Now func() time.Time; Actor string }
+type Options struct { Dir, DBPath, Remote string; DryRun bool; Now func() time.Time; Actor string; NoPrompt bool }   // NoPrompt: git asks for no password on the terminal
 type Result struct { Remote string; Fetched, Pushed int; Resolved []Resolution; DryRun bool }
 
 func (s *Snapshot) Files() map[string][]byte                       // the canonical tree, path -> bytes

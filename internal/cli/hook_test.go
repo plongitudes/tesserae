@@ -168,7 +168,7 @@ func TestHookSessionStartGivesTheSyncADeadline(t *testing.T) {
 	}
 	syncDeadline = time.Nanosecond
 	r := start(t)
-	wantLastSync(t, r, "not synced (timed out)")
+	wantLastSync(t, r, "not synced (timed out; run tess sync to finish any login)")
 	if !strings.Contains(r.stdout, "Ready to start: 1\n") {
 		t.Errorf("stdout is\n%s", r.stdout)
 	}

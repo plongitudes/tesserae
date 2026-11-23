@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -216,5 +217,49 @@ func TestVersionWithoutGitSaysGitIsMissing(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	if _, err := Version(ctx); err == nil || !strings.Contains(err.Error(), "can't find it") {
 		t.Errorf("error is %v, want it to say git can't be found", err)
+	}
+}
+
+func TestNoPromptTurnsOffGitsTerminalPromptAndNothingElse(t *testing.T) {
+	plain := Repo{}.env()
+	for _, v := range plain {
+		if strings.HasPrefix(v, "GIT_TERMINAL_PROMPT=") {
+			t.Errorf("a plain Repo sets %s", v)
+		}
+	}
+	quiet := Repo{NoPrompt: true}.env()
+	if !slices.Contains(quiet, "GIT_TERMINAL_PROMPT=0") {
+		t.Errorf("NoPrompt does not set GIT_TERMINAL_PROMPT=0: %v", quiet)
+	}
+	if !slices.Contains(quiet, "LC_ALL=C") || len(quiet) != len(plain)+1 {
+		t.Errorf("NoPrompt changes more than one variable: %d vs %d entries", len(quiet), len(plain))
+	}
+}
+
+func TestRunDoesNotWaitForAChildThatKeepsGitsPipeOpen(t *testing.T) {
+	r := newRepo(t)
+	start := time.Now()
+	// The alias exits at once; the background sleep inherits git's stdout.
+	_, err := r.run(context.Background(), nil, "-c", "alias.linger=!sh -c 'sleep 3 & exit 0'", "linger")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > 2500*time.Millisecond {
+		t.Errorf("run took %s: it waited for the child, not just for git", took)
+	}
+}
+
+func TestUserNameIsGitsConfiguredNameOrEmpty(t *testing.T) {
+	r := newRepo(t)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "none"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	name, err := r.UserName(context.Background())
+	if err != nil || name != "" {
+		t.Errorf("unset: %q, %v; want empty and no error", name, err)
+	}
+	run(t, r.Dir, "config", "user.name", "Ada Lovelace")
+	name, err = r.UserName(context.Background())
+	if err != nil || name != "Ada Lovelace" {
+		t.Errorf("set: %q, %v", name, err)
 	}
 }
