@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,11 +38,29 @@ const scratchBranch = "refs/fast-import/scratch"
 
 // BlobHash is the object ID git gives a blob with these bytes, computed
 // here so a tree comparison needs no git process (SHA-1 repositories).
-func BlobHash(data []byte) string {
-	h := sha1.New()
+func BlobHash(data []byte) string { return HashBlob("sha1", data) }
+
+// HashBlob is BlobHash in the repository's object format, "sha1" or
+// "sha256" (ObjectFormat): the same recipe, a different hash function. An
+// unknown format is taken as sha1.
+func HashBlob(format string, data []byte) string {
+	var h hash.Hash = sha1.New()
+	if format == "sha256" {
+		h = sha256.New()
+	}
 	fmt.Fprintf(h, "blob %d\x00", len(data))
 	h.Write(data)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// ObjectFormat is the repository's hash algorithm for objects: "sha1", or
+// "sha256" for a repository made with --object-format=sha256.
+func (r Repo) ObjectFormat(ctx context.Context) (string, error) {
+	out, err := r.run(ctx, nil, "rev-parse", "--show-object-format")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // WriteCommit writes the commit, its trees and its blobs in one

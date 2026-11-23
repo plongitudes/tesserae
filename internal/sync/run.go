@@ -196,6 +196,32 @@ func issuesChanged(from, to map[string][]byte) int {
 	return len(changed)
 }
 
+// issuesChangedIDs is issuesChanged with the first tree given as blob IDs
+// (a ref listed with ls-tree) and the second hashed with hash: the same
+// count without reading a blob.
+func issuesChangedIDs(from map[string]string, to map[string][]byte, hash func([]byte) string) int {
+	changed := map[string]bool{}
+	seen := map[string]bool{}
+	for path, data := range to {
+		seen[path] = true
+		if id, ok := from[path]; ok && id == hash(data) {
+			continue
+		}
+		if id, ok := issueOfPath(path); ok {
+			changed[id] = true
+		}
+	}
+	for path := range from {
+		if seen[path] {
+			continue
+		}
+		if id, ok := issueOfPath(path); ok {
+			changed[id] = true
+		}
+	}
+	return len(changed)
+}
+
 // issueOfPath is the issue a file of the tree belongs to. Texts and the
 // config belong to none.
 func issueOfPath(path string) (string, bool) {

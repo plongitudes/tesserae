@@ -79,12 +79,18 @@ func ReadState(ctx context.Context, dir, dbPath string) (*State, error) {
 			return nil, fmt.Errorf("read %s: %w", ConfigLastAt, err)
 		}
 	}
-	lkg, err := gitref.Local(ctx, dir)
+	// The local ref is listed, not read: its blob IDs against the hashes of
+	// the snapshot's files say which issues changed, with no cat-file.
+	commit, ids, err := gitref.LocalIDs(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
-	state.HasLKG = lkg.Present()
-	state.Changed = issuesChanged(lkg.Files, snap.Files())
+	format, err := (git.Repo{Dir: dir}).ObjectFormat(ctx)
+	if err != nil {
+		return nil, err
+	}
+	state.HasLKG = commit != ""
+	state.Changed = issuesChangedIDs(ids, snap.Files(), func(data []byte) string { return git.HashBlob(format, data) })
 	if holder, held, err := LockHeld(dbPath); err != nil {
 		return nil, err
 	} else if held {
@@ -95,16 +101,17 @@ func ReadState(ctx context.Context, dir, dbPath string) (*State, error) {
 
 // FindRemote names the remote a sync in dir would use: the one named, else
 // origin, else the only remote (sync.md, "Git"); no_remote when that picks
-// none. With reach it also fetches from it, the one step here that uses
-// the network, and a remote that can't be reached is offline. A remote
-// that holds no issues yet is reachable.
+// none. With reach it also asks the remote whether it is there (one
+// ls-remote, no fetch), the one step here that uses the network, and a
+// remote that can't be reached is offline. A remote that holds no issues
+// yet is reachable.
 func FindRemote(ctx context.Context, dir, name string, reach bool) (string, error) {
 	transport, err := gitref.Open(ctx, git.Repo{Dir: dir}, name)
 	if err != nil {
 		return "", err
 	}
 	if reach {
-		if _, err := transport.Fetch(ctx); err != nil {
+		if err := transport.Reachable(ctx); err != nil {
 			return transport.Remote(), err
 		}
 	}

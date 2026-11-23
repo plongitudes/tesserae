@@ -346,3 +346,64 @@ func TestAdvanceIsCompareAndSwap(t *testing.T) {
 		t.Error("Advance to the same commit failed")
 	}
 }
+
+func TestReachableAsksWithoutFetching(t *testing.T) {
+	remote := newBare(t)
+	dir, tr := newCopy(t, remote)
+	if err := tr.Reachable(ctx); err != nil {
+		t.Errorf("an empty remote is reachable: %v", err)
+	}
+	if refs := run(t, dir, "for-each-ref"); refs != "" {
+		t.Errorf("Reachable made refs:\n%s", refs)
+	}
+	run(t, dir, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "nowhere.git"))
+	wantCode(t, tr.Reachable(ctx), git.CodeOffline)
+}
+
+func TestLocalIDsListsTheLocalRefWithoutReadingBlobs(t *testing.T) {
+	remote := newBare(t)
+	dir, tr := newCopy(t, remote)
+	commit, ids, err := LocalIDs(ctx, dir)
+	if err != nil || commit != "" || ids != nil {
+		t.Fatalf("no local ref yet: %q, %v, %v", commit, ids, err)
+	}
+	files := map[string][]byte{"config.json": []byte(`{"format":1,"prefix":"t"}` + "\n"), "issues/t-1.json": []byte("one")}
+	c, err := tr.Push(ctx, Tree{}, Tree{}, files, by("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Advance(ctx, Tree{}, c); err != nil {
+		t.Fatal(err)
+	}
+	commit, ids, err = LocalIDs(ctx, dir)
+	if err != nil || commit != c || len(ids) != 2 || ids["issues/t-1.json"] != git.BlobHash([]byte("one")) {
+		t.Errorf("after advance: %q, %v, %v; want %s and both files' hashes", commit, ids, err, c)
+	}
+}
+
+func TestOpenReadsTheObjectFormatAndHashesWithIt(t *testing.T) {
+	dir := t.TempDir()
+	run(t, dir, "init", "-q", "--object-format=sha256", ".")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	run(t, "", "init", "-q", "--bare", "--object-format=sha256", remote)
+	run(t, dir, "remote", "add", "origin", remote)
+	tr, err := Open(ctx, git.Repo{Dir: dir}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr.format != "sha256" {
+		t.Errorf("format = %q", tr.format)
+	}
+	files := map[string][]byte{"issues/t-1.json": []byte("one")}
+	c, err := tr.Push(ctx, Tree{}, Tree{}, files, by("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Advance(ctx, Tree{}, c); err != nil {
+		t.Fatal(err)
+	}
+	_, ids, err := LocalIDs(ctx, dir)
+	if err != nil || ids["issues/t-1.json"] != git.HashBlob("sha256", []byte("one")) {
+		t.Errorf("ids = %v, %v; want the sha256 blob hash", ids, err)
+	}
+}

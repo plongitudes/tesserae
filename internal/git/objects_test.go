@@ -3,6 +3,8 @@ package git
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -178,5 +180,31 @@ func TestReadBlobsReadsManyBlobsInOrder(t *testing.T) {
 	}
 	if _, err := r.ReadBlobs(ctx, []string{hashes[0], strings.Repeat("1", 40)}); err == nil {
 		t.Error("reading a blob that isn't there: no error")
+	}
+}
+
+func TestObjectFormatIsSha1UnlessTheRepositorySaysSha256(t *testing.T) {
+	if format, err := newRepo(t).ObjectFormat(ctx); err != nil || format != "sha1" {
+		t.Errorf("default: %q, %v", format, err)
+	}
+	dir := t.TempDir()
+	run(t, dir, "init", "-q", "--object-format=sha256", ".")
+	if format, err := (Repo{Dir: dir}).ObjectFormat(ctx); err != nil || format != "sha256" {
+		t.Errorf("sha256 repository: %q, %v", format, err)
+	}
+}
+
+func TestHashBlobMatchesGitInEitherObjectFormat(t *testing.T) {
+	if got := HashBlob("sha1", []byte("hello\n")); got != BlobHash([]byte("hello\n")) {
+		t.Errorf("sha1: %s", got)
+	}
+	dir := t.TempDir()
+	run(t, dir, "init", "-q", "--object-format=sha256", ".")
+	path := filepath.Join(dir, "f")
+	if err := os.WriteFile(path, []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if want, got := run(t, dir, "hash-object", path), HashBlob("sha256", []byte("hello\n")); got != want {
+		t.Errorf("sha256: %s, git says %s", got, want)
 	}
 }

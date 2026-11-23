@@ -211,3 +211,29 @@ func TestACancelledContextIsNotReportedAsOffline(t *testing.T) {
 		t.Fatalf("error = %v, want the context's", err)
 	}
 }
+
+func TestLsRemoteSaysWhetherTheRemoteHasTheRef(t *testing.T) {
+	remote := newBare(t)
+	a := newRepo(t)
+	id, found, err := a.LsRemote(ctx, remote, syncRef)
+	if err != nil || found || id != "" {
+		t.Fatalf("empty remote: %q, %v, %v; want not found and no error", id, found, err)
+	}
+	c := commit(t, a, map[string][]byte{"issues/t-1.json": []byte("one")})
+	if err := a.Push(ctx, remote, c, syncRef, ""); err != nil {
+		t.Fatal(err)
+	}
+	id, found, err = a.LsRemote(ctx, remote, syncRef)
+	if err != nil || !found || id != c {
+		t.Errorf("after push: %q, %v, %v; want %s", id, found, err, c)
+	}
+	if refs := run(t, a.Dir, "for-each-ref", "--format=%(refname)"); strings.Contains(refs, "tess/remotes") {
+		t.Errorf("ls-remote fetched something:\n%s", refs)
+	}
+}
+
+func TestLsRemoteOfAnUnreachableRemoteIsOffline(t *testing.T) {
+	a := newRepo(t)
+	_, _, err := a.LsRemote(ctx, filepath.Join(t.TempDir(), "nowhere.git"), syncRef)
+	wantCode(t, err, CodeOffline)
+}

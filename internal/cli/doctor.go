@@ -130,7 +130,11 @@ func examine(ctx context.Context, reach bool) *report {
 		r.add("repository", levelFail, message(err), "run tess inside a repository, or `git init` here first")
 		return r
 	}
-	r.add("repository", levelOK, commonDir, "")
+	repository := commonDir
+	if format, err := (git.Repo{}).ObjectFormat(ctx); err == nil && format != "sha1" {
+		repository += ", " + format + " objects"
+	}
+	r.add("repository", levelOK, repository, "")
 
 	path := filepath.Join(commonDir, databaseName)
 	state, err := sync.ReadState(ctx, "", path)

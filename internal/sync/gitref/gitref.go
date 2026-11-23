@@ -42,6 +42,7 @@ func fetchedRef(remote string) string {
 type Transport struct {
 	repo   git.Repo
 	remote string
+	format string            // the repository's object format, for hashing blobs in-process
 	blobs  map[string][]byte // blob ID -> bytes, so a blob is read once
 }
 
@@ -73,7 +74,19 @@ func Open(ctx context.Context, repo git.Repo, name string) (*Transport, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Transport{repo: repo, remote: remote, blobs: map[string][]byte{}}, nil
+	format, err := repo.ObjectFormat(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &Transport{repo: repo, remote: remote, format: format, blobs: map[string][]byte{}}, nil
+}
+
+// Reachable asks the remote whether it is there, with one ls-remote and
+// no fetch: true for a remote with or without the sync ref, offline for
+// one that cannot be reached.
+func (t *Transport) Reachable(ctx context.Context) error {
+	_, _, err := t.repo.LsRemote(ctx, t.remote, syncRef)
+	return err
 }
 
 // choose picks the remote (sync.md, "Git"). The name is never stored.
@@ -122,6 +135,20 @@ func (t *Transport) Remote() string { return t.remote }
 func Local(ctx context.Context, dir string) (Tree, error) {
 	t := &Transport{repo: git.Repo{Dir: dir}, blobs: map[string][]byte{}}
 	return t.Local(ctx)
+}
+
+// LocalIDs lists the local ref of the repository dir is in without reading
+// a blob: the commit ("" when there is none) and each path's blob ID in
+// the repository's object format, for comparing against HashBlob of a
+// snapshot's files.
+func LocalIDs(ctx context.Context, dir string) (commit string, ids map[string]string, err error) {
+	repo := git.Repo{Dir: dir}
+	commit, ok, err := repo.ResolveRef(ctx, syncRef)
+	if err != nil || !ok {
+		return "", nil, err
+	}
+	ids, err = repo.ListTree(ctx, commit)
+	return commit, ids, err
 }
 
 // Local reads the local ref: the last known good snapshot.
@@ -202,7 +229,7 @@ func (t *Transport) Push(ctx context.Context, lkg, theirs Tree, files map[string
 	}
 	changed := map[string][]byte{}
 	for path, data := range files {
-		if id, ok := base.ids[path]; !ok || id != git.BlobHash(data) {
+		if id, ok := base.ids[path]; !ok || id != git.HashBlob(t.format, data) {
 			changed[path] = data
 		}
 	}

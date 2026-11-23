@@ -483,3 +483,16 @@ func TestDoctorTakesNoArguments(t *testing.T) {
 	inInitialisedRepo(t)
 	wantError(t, tess(t, "doctor", "origin", "--json"), "invalid_argument")
 }
+
+func TestDoctorRepositoryNamesASha256Repository(t *testing.T) {
+	dir := inDir(t, isolate(t), "repo")
+	if out, err := exec.Command("git", "init", "-q", "--object-format=sha256", ".").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	must(t, "init", "--prefix", "t")
+	checks, _ := doctor(t, 0)
+	c := wantLevel(t, checks, "repository", "ok")
+	if !strings.Contains(c.Detail, dir) || !strings.HasSuffix(c.Detail, ", sha256 objects") {
+		t.Errorf("repository detail is %q, want the path and the object format", c.Detail)
+	}
+}

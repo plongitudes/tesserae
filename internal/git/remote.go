@@ -41,6 +41,26 @@ func (r Repo) Fetch(ctx context.Context, remote, ref, dst string) (bool, error) 
 // somewhere else, CodePushRejected with git's reason when the remote
 // refuses the update, CodeOffline when the remote can't be reached. The
 // repository's pre-push hook does not run: this is not the user's push.
+// LsRemote asks remote for the commit at ref without fetching anything:
+// one process, no objects. found is false, with no error, when the remote
+// is reachable but has no such ref; a remote that can't be reached is
+// offline.
+func (r Repo) LsRemote(ctx context.Context, remote, ref string) (id string, found bool, err error) {
+	out, err := r.run(ctx, nil, "ls-remote", "--exit-code", "--end-of-options", remote, ref)
+	if exitCode(err) == 2 {
+		return "", false, nil
+	}
+	if err != nil {
+		var f *failure
+		if errors.As(err, &f) {
+			return "", false, offline(remote, f.stderr)
+		}
+		return "", false, err
+	}
+	id, _, _ = strings.Cut(strings.TrimSpace(string(out)), "\t")
+	return id, id != "", nil
+}
+
 func (r Repo) Push(ctx context.Context, remote, commit, ref, expected string) error {
 	out, err := r.run(ctx, nil, "push", "--porcelain", "--no-verify", "--no-recurse-submodules", "--no-follow-tags",
 		"--force-with-lease="+ref+":"+expected, "--end-of-options", remote, commit+":"+ref)

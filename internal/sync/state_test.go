@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/plongitudes/tesserae/internal/git"
 	"github.com/plongitudes/tesserae/internal/store/sqlite"
 	"github.com/plongitudes/tesserae/internal/tracker"
 )
@@ -110,4 +111,48 @@ func TestFindRemoteChoosesAsASyncDoesAndReachesOnlyWhenAsked(t *testing.T) {
 	if refAt(t, c.dir, localRef) != "" {
 		t.Error("reaching the remote made a local ref")
 	}
+}
+
+func TestIssuesChangedIDsCountsAsTheByteComparisonDoes(t *testing.T) {
+	hash := git.BlobHash
+	from := map[string]string{
+		"config.json":          hash([]byte("c")),
+		"issues/t-1.json":      hash([]byte("same")),
+		"issues/t-2.json":      hash([]byte("old")),
+		"issues/t-3.json":      hash([]byte("gone")),
+		"comments/t-4/c1.json": hash([]byte("comment")),
+		"texts/abc":            hash([]byte("text")),
+	}
+	to := map[string][]byte{
+		"config.json":          []byte("changed config counts no issue"),
+		"issues/t-1.json":      []byte("same"),
+		"issues/t-2.json":      []byte("new"),
+		"comments/t-4/c1.json": []byte("comment"),
+		"events/t-5/e1.json":   []byte("new event"),
+	}
+	if got := issuesChangedIDs(from, to, hash); got != 3 { // t-2 changed, t-3 gone, t-5 new
+		t.Errorf("changed = %d, want 3", got)
+	}
+	if got := issuesChangedIDs(nil, to, hash); got != 4 { // every issue without a local ref
+		t.Errorf("changed with no ref = %d, want 4", got)
+	}
+}
+
+func TestASha256RepositorySyncsAndCountsLikeAnyOther(t *testing.T) {
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	gitRun(t, "", "init", "-q", "--bare", "--object-format=sha256", remote)
+	a := &syncCopy{testCopy: newCopy(t), dir: t.TempDir()}
+	gitRun(t, a.dir, "init", "-q", "--object-format=sha256", ".")
+	gitRun(t, a.dir, "remote", "add", "origin", remote)
+	a.create("2026-01-01T00:00:01Z", tracker.NewIssue{Title: "One"})
+	wantCounts(t, a.sync("2026-01-01T00:01:00Z"), 0, 1)
+	state, err := ReadState(a.ctx, a.dir, a.db)
+	if err != nil || !state.HasLKG || state.Changed != 0 {
+		t.Fatalf("after sync: %+v, %v; want a local ref and nothing changed", state, err)
+	}
+	a.create("2026-01-01T00:02:00Z", tracker.NewIssue{Title: "Two"})
+	if state, _ := ReadState(a.ctx, a.dir, a.db); state.Changed != 1 {
+		t.Errorf("changed = %d, want 1", state.Changed)
+	}
+	wantCounts(t, a.sync("2026-01-01T00:03:00Z"), 0, 1)
 }
