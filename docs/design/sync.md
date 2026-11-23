@@ -94,7 +94,7 @@ Both appear in the orientation. Partial output and codes are in the acceptance R
 
 ## Hooks
 
-`tess hook session-start` runs the sync in-process with a ten-second deadline before printing its facts, unless the hook's `source` is `compact`. `no_remote`, `offline`, `busy` and the deadline are facts, not failures: the `Last sync` line says `just now`, `2 hours ago, 3 issues changed since`, `never`, or `not synced: offline`. The hook never exits non-zero and never prints a resolution. `tess hook session-end` starts `tess sync` detached, with its output discarded, and exits at once.
+`tess hook session-start` runs the sync in-process with a ten-second deadline before printing its facts, unless the hook's `source` is `compact`. `no_remote`, `offline`, `busy` and the deadline are facts, not failures: the `Last sync` line says `just now`, `2 hours ago, 3 issues changed since`, `never`, `not synced (offline)`, or, for a copy that synced before, `3 days ago, not synced now (offline)`. The deadline reads `not synced (timed out)`. The hook never exits non-zero and never prints a resolution. `tess hook session-end` starts `tess sync` detached, with its output discarded, and exits at once.
 
 No ordinary command mentions sync state. "Issues changed since the last sync" appears in `doctor` and the session-start facts, nowhere else.
 
