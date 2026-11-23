@@ -25,8 +25,17 @@ import (
 const (
 	// CodeNotAGitRepo is for running outside a git repository.
 	CodeNotAGitRepo = "not_a_git_repo"
-	// CodeOffline is for a fetch or push that could not reach the remote.
-	CodeOffline = "offline"
+	// The codes for a fetch, push or ls-remote that never got an answer
+	// from the remote, told apart by git's reason (unreachable). The
+	// network ones are separate for troubleshooting; every credential or
+	// key problem is one code, so the message says no more than git does.
+	CodeOffline            = "offline"              // no answer, and git's reason is not one of the below
+	CodeHostUnresolved     = "host_unresolved"      // the URL's host name does not resolve
+	CodeConnectionRefused  = "connection_refused"   // the host is there, nothing answers on the port
+	CodeConnectionTimedOut = "connection_timed_out" // no answer in time
+	CodeNetworkUnreachable = "network_unreachable"  // no route to the host
+	CodeAuthFailed         = "auth_failed"          // the remote did not accept the credentials or key
+	CodeRemoteNotFound     = "remote_not_found"     // the URL is not a repository
 	// CodePushRejected is for a push the remote refused for a reason that
 	// trying again won't change.
 	CodePushRejected = "push_rejected"

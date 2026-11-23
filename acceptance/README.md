@@ -129,7 +129,7 @@ The contract for [sync.md](../docs/design/sync.md). Scripts: `sync.txtar` (two c
 - `tess sync [--remote NAME] [--dry-run]` and `tess doctor [--remote]`, both in the orientation.
 - A copy is a git repository with its own common dir, so two `git init` directories with the same remote are two copies. The remote is any git remote; the scripts use a bare repository on disk. Nothing in the scripts names the ref the transport fetches into.
 - `TESS_NOW` fixes every timestamp sync writes, including the commit's, and is the time the conflict rule compares, so a script orders edits across copies by setting it.
-- Errors are the usual envelope. Codes: `no_remote`, `offline`, `push_rejected`, `conflict`, `prefix_mismatch`, `format_unsupported`, `busy`; and `not_initialized` as everywhere. After a failed sync nothing has changed: the database, and `refs/tess/sync` in the copy's repository, are as before.
+- Errors are the usual envelope. Codes: `no_remote`; for a remote that gave no answer, by git's reason, `host_unresolved`, `connection_refused`, `connection_timed_out`, `network_unreachable`, `auth_failed` (any credential or key problem; the message says no more than git does), `remote_not_found` (the URL is not a repository), and `offline` for a reason git words some other way; `push_rejected`, `conflict`, `prefix_mismatch`, `format_unsupported`, `busy`; and `not_initialized` as everywhere. After a failed sync nothing has changed: the database, and `refs/tess/sync` in the copy's repository, are as before.
 
 ### Sync output (suite decision)
 
@@ -174,7 +174,7 @@ With `--json`, stdout is an array of `{"check", "level", "detail", "fix"}` in th
 
 ### Hooks
 
-`tess hook session-start` runs the sync first (ten-second deadline, unless `source` is `compact`) and its `Last sync` fact becomes `Last sync: just now` after a success, `Last sync: never` when the copy has never synced and the sync could not run (no remote), and `Last sync: not synced (<code>)` when the sync failed for another reason; a copy that synced before and fails now says `Last sync: <when>, not synced now (<code>)`. When the ten-second deadline ended the sync, the code reads `timed out; run tess sync to finish any login`, since a credential prompt may have been waiting on the user. The hook runs git with its terminal prompt off. "Just now" is under a minute by the clock. The hook still exits 0 and prints nothing to stderr.
+`tess hook session-start` runs the sync first (ten-second deadline, unless `source` is `compact`) and its `Last sync` fact becomes `Last sync: just now` after a success, `Last sync: never` when the copy has never synced and the sync could not run (no remote), and `Last sync: not synced (<code>)` when the sync failed for another reason; a copy that synced before and fails now says `Last sync: <when>, not synced now (<code>)`. When the ten-second deadline ended the sync, the code reads `timed out; run tess sync to finish any login`, and `auth_failed` reads `auth_failed; run tess sync to log in`, since a credential prompt may have been waiting on the user. The hook runs git with its terminal prompt off. "Just now" is under a minute by the clock. The hook still exits 0 and prints nothing to stderr.
 
 ### The simulator (`sim/`)
 

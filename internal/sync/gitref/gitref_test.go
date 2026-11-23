@@ -303,7 +303,7 @@ func TestPushRefusedByTheRemoteIsPushRejected(t *testing.T) {
 func TestFetchFromAnUnreachableRemoteIsOffline(t *testing.T) {
 	_, a := newCopy(t, filepath.Join(t.TempDir(), "nowhere.git"))
 	_, err := a.Fetch(ctx)
-	wantCode(t, err, git.CodeOffline)
+	wantCode(t, err, git.CodeRemoteNotFound)
 }
 
 func TestFetchFromARemoteThatLostItsRefIsAbsentNotTheLastFetch(t *testing.T) {
@@ -357,7 +357,7 @@ func TestReachableAsksWithoutFetching(t *testing.T) {
 		t.Errorf("Reachable made refs:\n%s", refs)
 	}
 	run(t, dir, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "nowhere.git"))
-	wantCode(t, tr.Reachable(ctx), git.CodeOffline)
+	wantCode(t, tr.Reachable(ctx), git.CodeRemoteNotFound)
 }
 
 func TestLocalIDsListsTheLocalRefWithoutReadingBlobs(t *testing.T) {

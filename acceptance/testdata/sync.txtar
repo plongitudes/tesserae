@@ -262,11 +262,11 @@ exec tess sync
 exec tess show $D --json
 json stdout .title Dry
 
-# An unreachable remote: offline, nothing changed.
+# A remote that is not there: remote_not_found (a network failure would be offline or finer), nothing changed.
 cd ../a
 exec git remote set-url origin $WORK/nowhere.git
 ! exec tess sync --json
-json stderr .error.code offline
+json stderr .error.code remote_not_found
 exec git remote set-url origin $WORK/remote.git
 
 # A push the remote refuses by policy: push_rejected, and nothing moves.

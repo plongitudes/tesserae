@@ -77,10 +77,13 @@ func lastSync(ctx context.Context, path string, now time.Time, ran bool, failed 
 	if ran && failed == "" {
 		return "just now", nil
 	}
-	if failed == timedOut {
+	switch failed {
+	case timedOut:
 		// A login prompt may have been waiting on the user; only a sync
 		// with a terminal can finish it.
 		failed += "; run tess sync to finish any login"
+	case sync.CodeAuthFailed:
+		failed += "; run tess sync to log in"
 	}
 	state, err := sync.ReadState(ctx, "", path)
 	if err != nil {

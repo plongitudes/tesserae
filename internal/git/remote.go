@@ -32,7 +32,7 @@ func (r Repo) Fetch(ctx context.Context, remote, ref, dst string) (bool, error) 
 	if strings.Contains(f.stderr, "couldn't find remote ref") {
 		return false, nil
 	}
-	return false, offline(remote, f.stderr)
+	return false, unreachable(remote, f.stderr)
 }
 
 // Push pushes commit to the remote's ref, but only if the ref is still at
@@ -53,7 +53,7 @@ func (r Repo) LsRemote(ctx context.Context, remote, ref string) (id string, foun
 	if err != nil {
 		var f *failure
 		if errors.As(err, &f) {
-			return "", false, offline(remote, f.stderr)
+			return "", false, unreachable(remote, f.stderr)
 		}
 		return "", false, err
 	}
@@ -74,7 +74,7 @@ func (r Repo) Push(ctx context.Context, remote, commit, ref, expected string) er
 	summary, rejected := rejection(string(out), ref)
 	if !rejected {
 		// Git never got as far as an answer about the ref.
-		return offline(remote, f.stderr)
+		return unreachable(remote, f.stderr)
 	}
 	why := summary
 	if open := strings.Index(summary, "("); open >= 0 && strings.HasSuffix(summary, ")") {
@@ -127,10 +127,58 @@ func moved(summary, why string) bool {
 	return strings.HasPrefix(why, "failed to update ref") || strings.HasPrefix(why, "failed to lock")
 }
 
-func offline(remote, stderr string) error {
-	return &tracker.Error{
-		Code:    CodeOffline,
-		Message: fmt.Sprintf("can't reach the remote %s: %s", remote, reason(stderr)),
-		Hint:    "check the connection and the remote's URL (`git remote -v`), then run `tess sync` again",
+// unreachable is the error for a remote that gave no answer: one of the
+// codes above, chosen from git's reason, with a hint for that cause.
+// Credential and key failures are not told apart from one another.
+func unreachable(remote, stderr string) error {
+	lower := strings.ToLower(stderr)
+	has := func(words ...string) bool {
+		for _, w := range words {
+			if strings.Contains(lower, w) {
+				return true
+			}
+		}
+		return false
 	}
+	why := reason(stderr)
+	switch {
+	case has("authentication failed", "permission denied", "could not read username", "could not read password",
+		"terminal prompts disabled", "host key verification failed", "invalid username or", "access denied"):
+		return &tracker.Error{Code: CodeAuthFailed,
+			Message: fmt.Sprintf("the remote %s did not accept the login: %s", remote, why),
+			Hint:    "run `tess sync` from a terminal to log in, or check the key or token git uses for this remote"}
+	case has("repository not found", "not found", "does not appear to be a git repository"):
+		return &tracker.Error{Code: CodeRemoteNotFound,
+			Message: fmt.Sprintf("the remote %s is not a repository: %s", remote, why),
+			Hint:    "check the remote's URL (`git remote -v`)"}
+	case has("could not resolve host", "name or service not known", "nodename nor servname", "temporary failure in name resolution"):
+		return &tracker.Error{Code: CodeHostUnresolved,
+			Message: fmt.Sprintf("can't reach the remote %s: %s", remote, why),
+			Hint:    "check the host name in the remote's URL (`git remote -v`) and that DNS works"}
+	case has("connection refused", "could not connect to server"):
+		return &tracker.Error{Code: CodeConnectionRefused,
+			Message: fmt.Sprintf("can't reach the remote %s: %s", remote, why),
+			Hint:    "the host is up but nothing answers on that port; check the URL's port and the server"}
+	case has("timed out", "timeout"):
+		return &tracker.Error{Code: CodeConnectionTimedOut,
+			Message: fmt.Sprintf("can't reach the remote %s: %s", remote, why),
+			Hint:    "check the connection; a firewall or VPN may be in the way"}
+	case has("network is unreachable", "no route to host", "network unreachable"):
+		return &tracker.Error{Code: CodeNetworkUnreachable,
+			Message: fmt.Sprintf("can't reach the remote %s: %s", remote, why),
+			Hint:    "no route to the host; check that the network is up and whether a VPN is needed"}
+	}
+	return &tracker.Error{Code: CodeOffline,
+		Message: fmt.Sprintf("can't reach the remote %s: %s", remote, why),
+		Hint:    "check the connection and the remote's URL (`git remote -v`), then run `tess sync` again"}
+}
+
+// IsUnreachable reports whether code is one of unreachable's: the remote
+// gave no answer, for whichever reason.
+func IsUnreachable(code string) bool {
+	switch code {
+	case CodeOffline, CodeHostUnresolved, CodeConnectionRefused, CodeConnectionTimedOut, CodeNetworkUnreachable, CodeAuthFailed, CodeRemoteNotFound:
+		return true
+	}
+	return false
 }

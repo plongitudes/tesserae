@@ -256,7 +256,7 @@ func TestDoctorSyncWarnsAfterAFailedSyncAndNamesTheCode(t *testing.T) {
 	}
 	checks, _ := doctor(t, 0)
 	c := wantLevel(t, checks, "sync", "warn")
-	if !strings.Contains(c.Detail, "offline") || !strings.Contains(c.Detail, "2026-01-01T00:00:00Z") {
+	if !strings.Contains(c.Detail, "remote_not_found") || !strings.Contains(c.Detail, "2026-01-01T00:00:00Z") {
 		t.Errorf("sync detail is %q, want the code and the last sync that worked", c.Detail)
 	}
 }

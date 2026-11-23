@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/plongitudes/tesserae/internal/sync"
 )
 
 // detached is every process a test's hooks asked to leave running. The
@@ -141,7 +144,7 @@ func TestHookSessionStartSaysWhyACopyThatNeverSyncedDidNot(t *testing.T) {
 	root := copies(t, "a")
 	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
 	gitIn(t, ".", "remote", "set-url", "origin", filepath.Join(root, "gone.git"))
-	wantLastSync(t, start(t), "not synced (offline)")
+	wantLastSync(t, start(t), "not synced (remote_not_found)")
 }
 
 func TestHookSessionStartKeepsTheTimeOfTheLastSyncWhenThisOneFails(t *testing.T) {
@@ -152,7 +155,7 @@ func TestHookSessionStartKeepsTheTimeOfTheLastSyncWhenThisOneFails(t *testing.T)
 
 	t.Setenv("TESS_NOW", "2026-01-04T00:00:00Z")
 	gitIn(t, ".", "remote", "set-url", "origin", filepath.Join(root, "gone.git"))
-	wantLastSync(t, start(t), "3 days ago, not synced now (offline)")
+	wantLastSync(t, start(t), "3 days ago, not synced now (remote_not_found)")
 	gitIn(t, ".", "remote", "remove", "origin")
 	wantLastSync(t, start(t), "3 days ago, not synced now (no_remote)")
 }
@@ -261,5 +264,14 @@ func TestOrientationDoesNotShowTheHookPlumbing(t *testing.T) {
 	inDir(t, isolate(t), "anywhere")
 	if r := tess(t); strings.Contains(r.stdout, "hook") {
 		t.Errorf("orientation mentions hook:\n%s", r.stdout)
+	}
+}
+
+func TestLastSyncFactHintsAtALoginAfterAuthFailed(t *testing.T) {
+	root := copies(t, "a")
+	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
+	fact, err := lastSync(context.Background(), filepath.Join(root, "a", ".git", "tess.db"), time.Now(), true, sync.CodeAuthFailed)
+	if err != nil || fact != "not synced (auth_failed; run tess sync to log in)" {
+		t.Errorf("fact = %q, %v", fact, err)
 	}
 }

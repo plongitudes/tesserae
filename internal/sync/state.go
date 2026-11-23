@@ -103,7 +103,7 @@ func ReadState(ctx context.Context, dir, dbPath string) (*State, error) {
 // origin, else the only remote (sync.md, "Git"); no_remote when that picks
 // none. With reach it also asks the remote whether it is there (one
 // ls-remote, no fetch), the one step here that uses the network, and a
-// remote that can't be reached is offline. A remote that holds no issues
+// remote that can't be reached is offline or one of the finer codes (git.IsUnreachable). A remote that holds no issues
 // yet is reachable.
 func FindRemote(ctx context.Context, dir, name string, reach bool) (string, error) {
 	transport, err := gitref.Open(ctx, git.Repo{Dir: dir}, name)

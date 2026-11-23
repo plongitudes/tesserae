@@ -90,11 +90,11 @@ func TestFetchFollowsARemoteRefThatWasRewritten(t *testing.T) {
 	}
 }
 
-func TestFetchFromAnUnreachableRemoteIsOffline(t *testing.T) {
+func TestFetchFromAMissingPathIsRemoteNotFound(t *testing.T) {
 	b := newRepo(t)
 	nowhere := filepath.Join(t.TempDir(), "nowhere.git")
 	_, err := b.Fetch(ctx, nowhere, syncRef, fetchedRef)
-	te := wantCode(t, err, CodeOffline)
+	te := wantCode(t, err, CodeRemoteNotFound)
 	if !strings.Contains(te.Message, "does not appear to be a git repository") {
 		t.Errorf("message doesn't carry git's reason: %s", te.Message)
 	}
@@ -105,14 +105,14 @@ func TestFetchFromAnUnreachableRemoteIsOffline(t *testing.T) {
 	// The same through a configured remote whose URL leads nowhere.
 	run(t, b.Dir, "remote", "add", "origin", nowhere)
 	_, err = b.Fetch(ctx, "origin", syncRef, fetchedRef)
-	wantCode(t, err, CodeOffline)
+	wantCode(t, err, CodeRemoteNotFound)
 }
 
-func TestPushToAnUnreachableRemoteIsOffline(t *testing.T) {
+func TestPushToAMissingPathIsRemoteNotFound(t *testing.T) {
 	a := newRepo(t)
 	c := commit(t, a, map[string][]byte{"f": []byte("1")})
 	err := a.Push(ctx, filepath.Join(t.TempDir(), "nowhere.git"), c, syncRef, "")
-	wantCode(t, err, CodeOffline)
+	wantCode(t, err, CodeRemoteNotFound)
 	if errors.Is(err, ErrRemoteMoved) {
 		t.Error("an unreachable remote reads as a moved one")
 	}
@@ -232,8 +232,42 @@ func TestLsRemoteSaysWhetherTheRemoteHasTheRef(t *testing.T) {
 	}
 }
 
-func TestLsRemoteOfAnUnreachableRemoteIsOffline(t *testing.T) {
+func TestLsRemoteOfAMissingPathIsRemoteNotFound(t *testing.T) {
 	a := newRepo(t)
 	_, _, err := a.LsRemote(ctx, filepath.Join(t.TempDir(), "nowhere.git"), syncRef)
-	wantCode(t, err, CodeOffline)
+	wantCode(t, err, CodeRemoteNotFound)
+}
+
+func TestUnreachableIsClassifiedFromGitsReason(t *testing.T) {
+	cases := []struct{ stderr, code string }{
+		{"fatal: Authentication failed for 'https://github.com/x/y.git/'", CodeAuthFailed},
+		{"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.", CodeAuthFailed},
+		{"fatal: could not read Username for 'https://github.com': terminal prompts disabled", CodeAuthFailed},
+		{"Host key verification failed.\nfatal: Could not read from remote repository.", CodeAuthFailed},
+		{"ERROR: Repository not found.\nfatal: Could not read from remote repository.", CodeRemoteNotFound},
+		{"fatal: repository 'https://github.com/x/y.git/' not found", CodeRemoteNotFound},
+		{"fatal: '/tmp/nowhere.git' does not appear to be a git repository\nfatal: Could not read from remote repository.", CodeRemoteNotFound},
+		{"fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host: github.com", CodeHostUnresolved},
+		{"ssh: Could not resolve hostname github.com: nodename nor servname provided, or not known", CodeHostUnresolved},
+		{"fatal: unable to access 'http://127.0.0.1:1/x': Failed to connect to 127.0.0.1 port 1: Connection refused", CodeConnectionRefused},
+		{"ssh: connect to host github.com port 22: Connection refused", CodeConnectionRefused},
+		{"ssh: connect to host github.com port 22: Operation timed out", CodeConnectionTimedOut},
+		{"fatal: unable to access 'https://x/': Failed to connect to x port 443 after 75003 ms: Connection timed out", CodeConnectionTimedOut},
+		{"ssh: connect to host github.com port 22: Network is unreachable", CodeNetworkUnreachable},
+		{"ssh: connect to host 10.0.0.9 port 22: No route to host", CodeNetworkUnreachable},
+		{"fatal: something new git says", CodeOffline},
+		{"", CodeOffline},
+	}
+	for _, c := range cases {
+		te := wantCode(t, unreachable("origin", c.stderr), c.code)
+		if te.Hint == "" || !strings.Contains(te.Message, "origin") {
+			t.Errorf("%s: message %q hint %q", c.code, te.Message, te.Hint)
+		}
+	}
+}
+
+func TestFetchFromAClosedPortIsConnectionRefused(t *testing.T) {
+	b := newRepo(t)
+	_, err := b.Fetch(ctx, "http://127.0.0.1:1/nothing.git", syncRef, fetchedRef)
+	wantCode(t, err, CodeConnectionRefused)
 }

@@ -272,7 +272,7 @@ func TestAFailedSyncIsARefusalWithItsCodeAndHint(t *testing.T) {
 	root := copies(t, "a")
 	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
 	gitIn(t, filepath.Join(root, "a"), "remote", "set-url", "origin", filepath.Join(root, "nowhere.git"))
-	wantError(t, tess(t, "sync", "--json"), "offline")
+	wantError(t, tess(t, "sync", "--json"), "remote_not_found")
 	r := tess(t, "sync")
 	if r.code != 1 || r.stdout != "" || !strings.HasPrefix(r.stderr, "error: ") || strings.Contains(r.stderr, "usage:") {
 		t.Errorf("exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)

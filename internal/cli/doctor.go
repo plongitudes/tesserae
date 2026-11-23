@@ -220,8 +220,8 @@ func (r *report) remote(ctx context.Context, reach bool) {
 		}
 		r.add(name, levelWarn, fmt.Sprintf("%d remotes and none is origin: %s", len(names), strings.Join(names, ", ")),
 			"name the one to sync with: tess sync --remote NAME")
-	case errors.As(err, &refusal) && refusal.Code == sync.CodeOffline:
-		r.add(name, levelWarn, refusal.Message, "check the connection and the remote's URL (git remote -v)")
+	case errors.As(err, &refusal) && git.IsUnreachable(refusal.Code):
+		r.add(name, levelWarn, fmt.Sprintf("%s (%s)", refusal.Message, refusal.Code), strings.ReplaceAll(refusal.Hint, "`", ""))
 	default:
 		r.add(name, levelWarn, message(err), "see `git remote -v`")
 	}

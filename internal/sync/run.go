@@ -18,9 +18,15 @@ import (
 // The codes a sync fails with (sync.md, "Command surface"), beside
 // CodeConflict, CodePrefixMismatch, CodeFormatUnsupported and CodeBusy.
 const (
-	CodeNoRemote     = gitref.CodeNoRemote
-	CodeOffline      = git.CodeOffline
-	CodePushRejected = git.CodePushRejected
+	CodeNoRemote           = gitref.CodeNoRemote
+	CodeOffline            = git.CodeOffline
+	CodeHostUnresolved     = git.CodeHostUnresolved
+	CodeConnectionRefused  = git.CodeConnectionRefused
+	CodeConnectionTimedOut = git.CodeConnectionTimedOut
+	CodeNetworkUnreachable = git.CodeNetworkUnreachable
+	CodeAuthFailed         = git.CodeAuthFailed
+	CodeRemoteNotFound     = git.CodeRemoteNotFound
+	CodePushRejected       = git.CodePushRejected
 )
 
 // pushAttempts is how many times a sync fetches, merges and pushes before

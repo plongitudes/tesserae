@@ -451,7 +451,7 @@ func TestRunAgainstAnUnreachableRemoteIsOffline(t *testing.T) {
 	before, ref := a.load(), refAt(t, a.dir, localRef)
 	gitRun(t, a.dir, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "nowhere.git"))
 	_, err := Run(a.ctx, a.options())
-	wantSyncCode(t, err, CodeOffline)
+	wantSyncCode(t, err, CodeRemoteNotFound)
 	a.wantUntouched(before, ref)
 }
 
@@ -655,7 +655,7 @@ func TestTheLockIsReleasedWhenASyncFails(t *testing.T) {
 	a := newSyncCopy(t, filepath.Join(t.TempDir(), "nowhere.git"))
 	for i := 0; i < 2; i++ {
 		_, err := run(a.ctx, a.options(), settings{lockWait: 100 * time.Millisecond})
-		wantSyncCode(t, err, CodeOffline)
+		wantSyncCode(t, err, CodeRemoteNotFound)
 	}
 }
 

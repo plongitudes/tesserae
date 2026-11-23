@@ -71,7 +71,7 @@ func TestStateKeepsTheLastGoodTimeAndTheCodeOfAFailedSync(t *testing.T) {
 		t.Fatal("sync with nowhere worked")
 	}
 	got := c.state()
-	if !got.LastAt.Equal(at("2026-01-01T00:01:00Z")) || got.LastResult != CodeOffline {
+	if !got.LastAt.Equal(at("2026-01-01T00:01:00Z")) || got.LastResult != CodeRemoteNotFound {
 		t.Errorf("last at %v, result %q", got.LastAt, got.LastResult)
 	}
 }
@@ -98,7 +98,7 @@ func TestFindRemoteChoosesAsASyncDoesAndReachesOnlyWhenAsked(t *testing.T) {
 		t.Errorf("unreached: %q, %v; want origin and no error", name, err)
 	}
 	name, err := FindRemote(c.ctx, c.dir, "", true)
-	wantSyncCode(t, err, CodeOffline)
+	wantSyncCode(t, err, CodeRemoteNotFound)
 	if name != "origin" {
 		t.Errorf("an unreachable remote is still named: got %q", name)
 	}
