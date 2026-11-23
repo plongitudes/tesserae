@@ -1,12 +1,17 @@
 package cli
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/plongitudes/tesserae/internal/sync"
 )
 
 // check is one element of doctor's JSON.
@@ -240,6 +245,42 @@ func TestDoctorSyncWarnsWhenTheLocalRefIsGone(t *testing.T) {
 	c := wantLevel(t, checks, "sync", "warn")
 	if !strings.Contains(c.Detail, "2026-01-01T00:00:00Z") || !strings.Contains(c.Detail, "snapshot") {
 		t.Errorf("sync detail is %q, want the last sync and the lost snapshot", c.Detail)
+	}
+}
+
+func TestDoctorSyncSaysWhenASyncIsRunningNow(t *testing.T) {
+	root := copies(t, "a")
+	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
+	must(t, "sync")
+	release, err := sync.Lock(context.Background(), filepath.Join(root, "a", ".git", "tess.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	checks, _ := doctor(t, 0)
+	c := wantLevel(t, checks, "sync", "ok")
+	if want := fmt.Sprintf("a sync is running now (pid %d, for ", os.Getpid()); !strings.Contains(c.Detail, want) {
+		t.Errorf("sync detail is %q, want it to say %q", c.Detail, want)
+	}
+	release()
+	checks, _ = doctor(t, 0)
+	if c := wantLevel(t, checks, "sync", "ok"); strings.Contains(c.Detail, "running") {
+		t.Errorf("sync detail still says a sync is running: %q", c.Detail)
+	}
+}
+
+func TestRunningSyncNoteWarnsWhenItHasRunTooLong(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 10, 0, 0, time.UTC)
+	fresh := &sync.LockHolder{PID: 4812, Since: now.Add(-45 * time.Second)}
+	if note, stuck := runningNote(fresh, now); note != "a sync is running now (pid 4812, for 45s)" || stuck {
+		t.Errorf("fresh: %q stuck=%v", note, stuck)
+	}
+	old := &sync.LockHolder{PID: 4812, Since: now.Add(-7 * time.Minute)}
+	if note, stuck := runningNote(old, now); note != "a sync has been running for 7m0s (pid 4812)" || !stuck {
+		t.Errorf("old: %q stuck=%v", note, stuck)
+	}
+	if note, stuck := runningNote(nil, now); note != "" || stuck {
+		t.Errorf("none: %q stuck=%v", note, stuck)
 	}
 }
 

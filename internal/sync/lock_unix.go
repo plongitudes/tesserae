@@ -10,9 +10,10 @@ import (
 
 // tryLock takes an exclusive flock on the file at path, creating it if
 // need be, without waiting. The kernel drops the lock when the process
-// dies, so a crashed sync never leaves the repository locked.
-func tryLock(path string) (release func(), ok bool, err error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+// dies, so a crashed sync never leaves the repository locked, and the file
+// stays behind; a held lock therefore always means a live process.
+func tryLock(path string) (f *os.File, ok bool, err error) {
+	f, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, false, err
 	}
@@ -29,5 +30,8 @@ func tryLock(path string) (release func(), ok bool, err error) {
 		}
 		return nil, false, err
 	}
-	return func() { f.Close() }, true, nil
+	return f, true, nil
 }
+
+// unlock releases what tryLock took. The file stays.
+func unlock(f *os.File, path string) { f.Close() }

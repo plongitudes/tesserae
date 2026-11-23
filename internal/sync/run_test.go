@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -521,7 +522,7 @@ func TestRunWithoutADatabaseIsNotInitialized(t *testing.T) {
 	if _, statErr := os.Stat(o.DBPath); !errors.Is(statErr, os.ErrNotExist) {
 		t.Errorf("a refused sync made a database")
 	}
-	if _, statErr := os.Stat(lockPath(o.DBPath)); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Stat(LockPath(o.DBPath)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Errorf("a refused sync made a lock file")
 	}
 }
@@ -548,12 +549,83 @@ func TestRunIsBusyWhileAnotherSyncHoldsTheLock(t *testing.T) {
 	if refAt(t, remote, localRef) != "" || refAt(t, a.dir, fetchedRef) != "" {
 		t.Errorf("a sync that never got the lock touched a ref")
 	}
-	if got := a.config(ConfigLastResult); got != CodeBusy {
-		t.Errorf("sync.last_result = %s, want %s", got, CodeBusy)
+	if got := a.config(ConfigLastResult); got != "<unset>" {
+		t.Errorf("sync.last_result = %s after busy, want it left alone", got)
+	}
+	var refusal *tracker.Error
+	if !errors.As(err, &refusal) || !strings.Contains(refusal.Message, fmt.Sprintf("pid %d, running for", os.Getpid())) {
+		t.Errorf("busy message is %q, want the holder's pid and how long", err)
 	}
 
 	release()
 	wantCounts(t, a.sync("2026-01-01T00:01:00Z"), 0, 1)
+}
+
+func TestTheLockFileNamesItsHolderWhileHeld(t *testing.T) {
+	a := newSyncCopy(t, newRemote(t))
+	if _, held, err := LockHeld(a.db); err != nil || held {
+		t.Fatalf("LockHeld before any sync: held=%v err=%v", held, err)
+	}
+	release, err := Lock(a.ctx, a.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder, held, err := LockHeld(a.db)
+	if err != nil || !held {
+		t.Fatalf("LockHeld while held: held=%v err=%v", held, err)
+	}
+	if holder.PID != os.Getpid() || time.Since(holder.Since) > time.Minute || holder.Since.IsZero() {
+		t.Errorf("holder = %+v, want this process and a start time just now", holder)
+	}
+	release()
+	if _, held, _ := LockHeld(a.db); held {
+		t.Errorf("still held after release")
+	}
+	if _, ok := readHolder(LockPath(a.db)); !ok {
+		t.Errorf("the record should stay in the file after release; only the lock goes")
+	}
+}
+
+func TestASecondHolderOverwritesTheRecord(t *testing.T) {
+	a := newSyncCopy(t, newRemote(t))
+	release, err := Lock(a.ctx, a.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if err := os.WriteFile(LockPath(a.db), []byte("pid 1\nsince 2000-01-01T00:00:00Z\nand a long stale line that must go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	release, err = Lock(a.ctx, a.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	holder, ok := readHolder(LockPath(a.db))
+	if !ok || holder.PID != os.Getpid() || holder.Since.Year() == 2000 {
+		t.Errorf("record after re-lock = %+v ok=%v, want this process", holder, ok)
+	}
+	raw, _ := os.ReadFile(LockPath(a.db))
+	if strings.Contains(string(raw), "stale") {
+		t.Errorf("stale bytes survive: %q", raw)
+	}
+}
+
+func TestReadStateReportsARunningSync(t *testing.T) {
+	a := newSyncCopy(t, newRemote(t))
+	state, err := ReadState(a.ctx, a.dir, a.db)
+	if err != nil || state.Running != nil {
+		t.Fatalf("idle: Running=%v err=%v", state.Running, err)
+	}
+	release, err := Lock(a.ctx, a.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	state, err = ReadState(a.ctx, a.dir, a.db)
+	if err != nil || state.Running == nil || state.Running.PID != os.Getpid() {
+		t.Fatalf("held: Running=%+v err=%v", state.Running, err)
+	}
 }
 
 func TestRunWaitsForAnotherSyncToFinish(t *testing.T) {

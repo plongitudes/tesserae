@@ -223,31 +223,57 @@ func (r *report) remote(ctx context.Context, reach bool) {
 	}
 }
 
-// sync reports when this copy last synced, how the last try went, and how
-// many issues have changed since.
+// stuckAfter is how long a sync may hold the lock before doctor calls it
+// stuck: well past the 30 seconds a second sync waits for it.
+const stuckAfter = 5 * time.Minute
+
+// runningNote says what the lock file says about a sync holding it now:
+// "" when none does. stuck is true when it has held the lock longer than
+// stuckAfter, which with flock means a live process that is not finishing.
+func runningNote(running *sync.LockHolder, now time.Time) (note string, stuck bool) {
+	if running == nil {
+		return "", false
+	}
+	age := now.Sub(running.Since).Round(time.Second)
+	if age >= stuckAfter {
+		return fmt.Sprintf("a sync has been running for %s (pid %d)", age, running.PID), true
+	}
+	return fmt.Sprintf("a sync is running now (pid %d, for %s)", running.PID, age), false
+}
+
+// sync reports when this copy last synced, how the last try went, how
+// many issues have changed since, and whether a sync is running now.
 func (r *report) sync(state *sync.State) {
 	const name = "sync"
 	// Having no remote is the remote check's news, not a sync that failed.
 	failed := state.LastResult != "" && state.LastResult != sync.ResultOK && state.LastResult != sync.CodeNoRemote
-	if state.LastAt.IsZero() {
-		if failed {
-			r.add(name, levelWarn, fmt.Sprintf("never synced; the last try failed (%s)", state.LastResult), "tess sync")
-			return
-		}
-		r.add(name, levelInfo, "never synced", "")
-		return
-	}
-	detail := fmt.Sprintf("last synced %s, %s changed since",
-		state.LastAt.UTC().Format(time.RFC3339), issueCount(state.Changed, "no"))
+	note, stuck := runningNote(state.Running, time.Now())
+	level, detail, fix := levelOK, "", ""
 	switch {
+	case state.LastAt.IsZero() && failed:
+		level, detail, fix = levelWarn, fmt.Sprintf("never synced; the last try failed (%s)", state.LastResult), "tess sync"
+	case state.LastAt.IsZero():
+		level, detail = levelInfo, "never synced"
 	case !state.HasLKG:
-		r.add(name, levelWarn, "last synced "+state.LastAt.UTC().Format(time.RFC3339)+
-			", but git no longer has the snapshot that sync left; the next sync merges without it", "tess sync")
+		level, fix = levelWarn, "tess sync"
+		detail = "last synced " + state.LastAt.UTC().Format(time.RFC3339) +
+			", but git no longer has the snapshot that sync left; the next sync merges without it"
 	case failed:
-		r.add(name, levelWarn, fmt.Sprintf("%s; the last try failed (%s)", detail, state.LastResult), "tess sync")
+		level, fix = levelWarn, "tess sync"
+		detail = fmt.Sprintf("last synced %s, %s changed since; the last try failed (%s)",
+			state.LastAt.UTC().Format(time.RFC3339), issueCount(state.Changed, "no"), state.LastResult)
 	default:
-		r.add(name, levelOK, detail, "")
+		detail = fmt.Sprintf("last synced %s, %s changed since",
+			state.LastAt.UTC().Format(time.RFC3339), issueCount(state.Changed, "no"))
 	}
+	if stuck {
+		level = levelWarn
+		fix = fmt.Sprintf("wait for it, or stop process %d if it is stuck", state.Running.PID)
+	}
+	if note != "" {
+		detail += "; " + note
+	}
+	r.add(name, level, detail, fix)
 }
 
 // claudeSettings reads the hooks object of a Claude Code settings file. A

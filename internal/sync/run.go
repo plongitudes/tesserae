@@ -52,10 +52,11 @@ func run(ctx context.Context, o Options, s settings) (*Result, error) {
 	}
 	result, err := locked(ctx, o, s)
 	if err != nil && !o.DryRun && ctx.Err() == nil {
-		// Whatever code the sync failed with, the choice of remote and the
-		// lock included, so the hook and doctor can say why.
+		// Whatever code the sync failed with, the choice of remote included,
+		// so the hook and doctor can say why. Not busy: waiting on another
+		// sync is not a sync that failed, and the other one writes ok.
 		var refusal *tracker.Error
-		if errors.As(err, &refusal) && refusal.Code != tracker.CodeNotInitialized {
+		if errors.As(err, &refusal) && refusal.Code != tracker.CodeNotInitialized && refusal.Code != CodeBusy {
 			// Best effort: the sync has already failed for its own reason.
 			_ = RecordFailure(ctx, o.DBPath, refusal.Code)
 		}

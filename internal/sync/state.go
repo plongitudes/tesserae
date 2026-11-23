@@ -30,6 +30,8 @@ type State struct {
 	// Changed is the number of issues that differ from the last known good
 	// snapshot: what the next sync would push. Without one, every issue.
 	Changed int
+	// Running is the sync holding the lock right now, if any.
+	Running *LockHolder
 }
 
 // ReadState reads the state of the copy whose database is at dbPath, in
@@ -81,6 +83,11 @@ func ReadState(ctx context.Context, dir, dbPath string) (*State, error) {
 	}
 	state.HasLKG = lkg.Present()
 	state.Changed = issuesChanged(lkg.Files, snap.Files())
+	if holder, held, err := LockHeld(dbPath); err != nil {
+		return nil, err
+	} else if held {
+		state.Running = &holder
+	}
 	return state, nil
 }
 
