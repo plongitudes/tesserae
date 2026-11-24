@@ -12,7 +12,7 @@ Your Bash runs in a sandbox: you can write only inside this worktree, `$TMPDIR`,
 - `scripts/ralph/plan.md`: the ordered plan. Items are checked off in order. Its "Notes" section is where iterations leave notes for the human and for later iterations.
 - `internal/sync/sync.go` is the exported API with nothing behind it; it is yours to fill in and restructure, as long as the exported names and signatures stay exactly as the README gives them. New packages go where the module map says: `internal/sync` (snapshot, merge, store, `Run`), `internal/sync/gitref` (the transport; the only place that knows ref names), `internal/git` (running the git binary).
 
-**Locked.** Never edit, delete, or add anything under `acceptance/`, `docs/`, `GLOSSARY.md`, `LOOP_PATTERN.md`, `REWRITE_HANDOFF.md`, `go.mod`, `go.sum`, `scripts/ralph/plan-loop1.md`, or the three scripts in `scripts/ralph/` other than `plan.md`. The host checks this and stops the loop if you do. If an acceptance script, a scenario, an invariant, or a design doc looks wrong, abort and say exactly what and why; a human fixes it.
+**Locked.** Never edit, delete, or add anything under `acceptance/`, `docs/`, `GLOSSARY.md`, `go.mod`, `go.sum`, `scripts/ralph/plan-loop1.md`, or the three scripts in `scripts/ralph/` other than `plan.md`. The host checks this and stops the loop if you do. If an acceptance script, a scenario, an invariant, or a design doc looks wrong, abort and say exactly what and why; a human fixes it.
 
 ## 1. Load the item
 

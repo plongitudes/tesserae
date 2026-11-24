@@ -39,7 +39,7 @@ mkdir -p "$state/logs"
 
 # Paths the loop may not change. Checked per iteration against the commit it
 # started from, so a human can still edit them between runs.
-locked=(acceptance docs GLOSSARY.md LOOP_PATTERN.md REWRITE_HANDOFF.md go.mod go.sum
+locked=(acceptance docs GLOSSARY.md go.mod go.sum
   scripts/ralph/ralph.sh scripts/ralph/check.sh scripts/ralph/prompt.md scripts/ralph/plan-loop1.md)
 
 # --- worktree -------------------------------------------------------------

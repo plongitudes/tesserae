@@ -5,7 +5,7 @@ date: 2026-11-12
 
 # v1 depends on four modules, fixed before the build loop
 
-`go.mod` is written and pinned before loop 1 runs, and the loop may not change it. The build loop runs offline ([LOOP_PATTERN.md](../../LOOP_PATTERN.md)), so a dependency it wants mid-iteration can't be fetched; deciding the set up front turns "the loop quietly picks a library" into a recorded choice.
+`go.mod` is written and pinned before loop 1 runs, and the loop may not change it. The build loop runs offline ([loop-pattern.md](../loop-pattern.md)), so a dependency it wants mid-iteration can't be fetched; deciding the set up front turns "the loop quietly picks a library" into a recorded choice.
 
 | Module | For | Why this one |
 |---|---|---|

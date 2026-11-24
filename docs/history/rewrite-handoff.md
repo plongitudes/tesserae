@@ -1,5 +1,7 @@
 # Rewrite Hand-off: tesserae
 
+> Historical. This is the document the project started from, kept as the evidence [ADR-0001](../adr/0001-rewrite-with-narrow-scope.md) cites. Its decisions table and open questions have since been settled by the ADRs in `docs/adr/`, which supersede anything here. The "Lessons from the old codebase" section is still the record of where the design rules came from.
+
 Written 2026-11-02 from plongitudes/beads at v0.48.1 (commit 7f0ff622b, `git@github.com:plongitudes/beads.git`). Purpose: give the new repo everything decided so far, so the design discussion starts from here instead of re-deriving it. Old-repo paths below refer to that commit.
 
 Background reading in the old repo: `docs/dev-notes/STORAGE_EVALUATION.md` (bd-1y5), `docs/dev-notes/BACKEND_PLUGIN_EVALUATION.md` (bd-78t).

@@ -1,6 +1,6 @@
 # Pattern: autonomous build loops with locked acceptance suites and adversarial simulation
 
-A way to hand a build to autonomous agent loops (Ralph-style: an agent re-run on the same prompt and plan until done) without getting code that passes weak tests and is still wrong. First worked out for tesserae, 2026-11-09 ([build-plan.md](docs/design/build-plan.md)).
+A way to hand a build to autonomous agent loops (Ralph-style: an agent re-run on the same prompt and plan until done) without getting code that passes weak tests and is still wrong. First worked out for tesserae, 2026-11-09 ([build-plan.md](design/build-plan.md)).
 
 ## 1. Decide everything before the loop
 
