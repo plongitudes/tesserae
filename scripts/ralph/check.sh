@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The gate every loop iteration must pass: gofmt, go vet, unit tests with
-# nothing skipped, a build of the binary, and a per-test report on the locked
+# The gate every loop iteration must pass: gofmt, go vet, staticcheck, unit
+# tests with nothing skipped, a build of the binary, and a per-test report on the locked
 # acceptance suite (the scripts, and from loop 2 the simulator's scenarios
 # and random runs). Shared by the sandboxed agent and the host-side check in
 # ralph.sh so both judge the same thing.
@@ -30,7 +30,7 @@ fail() { # <label> <grep pattern>
   exit 1
 }
 
-# --- formatting, vet, unit tests, build -----------------------------------
+# --- formatting, vet, staticcheck, unit tests, build -----------------------------------
 unformatted=$(gofmt -l cmd internal acceptance)
 if [ -n "$unformatted" ]; then
   echo "$unformatted"
@@ -38,6 +38,8 @@ if [ -n "$unformatted" ]; then
   exit 1
 fi
 go vet ./... >"$out" 2>&1 || fail "GO VET FAIL" "."
+# staticcheck is a tool dependency in go.mod, so it is in the module cache.
+go tool staticcheck ./... >"$out" 2>&1 || fail "STATICCHECK FAIL" "."
 go test -v -count=1 ./cmd/... ./internal/... >"$out" 2>&1 || fail "GO TESTS FAIL" "^(--- FAIL|FAIL|panic:|.*_test.go:[0-9]+:)"
 # A skipped test means its seam didn't run.
 if grep -E "^[[:space:]]*--- SKIP" "$out"; then

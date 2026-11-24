@@ -199,7 +199,7 @@ func (s *Snapshot) parseFile(path string, raw []byte) error {
 		if err := decode(raw, &f); err != nil {
 			return err
 		}
-		s.Config = Config{Format: f.Format, Prefix: f.Prefix}
+		s.Config = Config(f)
 		return nil
 
 	case strings.HasPrefix(path, textsDir):
