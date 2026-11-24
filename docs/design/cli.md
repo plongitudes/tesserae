@@ -65,8 +65,10 @@ tess doctor [--remote]                 check the setup: git, database, remote, s
                                        other trackers; --remote also tests the remote is reachable
 tess setup claude [--check|--remove]   write the Claude Code skill + hooks (ADR-0019)
 tess hook session-start|session-end    plumbing called by those hooks; not shown in orientation
+tess version                           which build this is: the installed version, or for a build
+                                       of a checkout its commit; Go records both in the binary
 tess                                   no arguments: orientation, one line per working command
-                                       (everything above except init, import, setup, hook)
+                                       (everything above except init, import, setup, hook, version)
 ```
 
 `tess hook` is what `setup claude` installs in `.claude/settings.json`: `SessionStart` (matcher `startup|resume|compact`) runs `tess hook session-start`, which reads the hook's JSON from stdin, runs `tess sync` with a short timeout unless `source` is `compact`, then prints 3–6 lines of facts (ready count, in-progress count, last sync) and never instructions; it prints nothing when the repo has no database and always exits 0. `SessionEnd` runs `tess hook session-end`, which starts a detached `tess sync` and exits at once. Both commands are wrapped so a missing `tess` binary fails quietly (ADR-0019, scope notes). The sync in `session-start` has a ten-second deadline; `no_remote`, `offline`, `busy` and the deadline are reported in the `Last sync` fact, never as a failure ([sync.md](sync.md), Hooks).

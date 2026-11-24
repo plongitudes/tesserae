@@ -8,7 +8,7 @@ import (
 
 // orientation is what `tess` prints with no arguments (ADR-0019, item 1):
 // one line per working command. The commands run once per repository or by
-// a hook (init, import, setup, hook) are left to `tess --help`.
+// a hook (init, import, setup, hook), and version, are left to `tess --help`.
 const orientation = `tess tracks this repository's issues. One database serves every worktree.
 
   tess ready                    issues that can be worked on now, by priority
@@ -79,6 +79,7 @@ names one issue.`,
 		a.doctorCommand(),
 		a.setupCommand(),
 		a.hookCommand(),
+		a.versionCommand(),
 	)
 	asSyntax(root)
 	return root

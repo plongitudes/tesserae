@@ -120,7 +120,7 @@ func wantError(t *testing.T, r result, code string) map[string]any {
 
 // plumbing are the commands the orientation leaves out: run once, or run by
 // something other than a person at work on issues.
-var plumbing = []string{"init", "import", "setup", "hook"}
+var plumbing = []string{"init", "import", "setup", "hook", "version"}
 
 func TestNoArgumentsPrintsOneLinePerWorkingCommandAndNoPlumbing(t *testing.T) {
 	inDir(t, isolate(t), "anywhere") // not a git repository: orientation needs none
