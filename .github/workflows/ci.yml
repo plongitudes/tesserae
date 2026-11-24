@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    # The same gate a developer runs: gofmt, vet, staticcheck, unit tests,
+    # the acceptance scripts and the simulator in full (CONTRIBUTING.md).
+    name: gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # the version go.mod states, which is the floor tess supports
+          go-version-file: go.mod
+      - name: Run the gate
+        run: scripts/ralph/check.sh --strict
+
+  windows:
+    # tess is not tested on Windows, but it has to keep compiling there:
+    # the lock and the detached sync have a !unix file each.
+    name: build (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
