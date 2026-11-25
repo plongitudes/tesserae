@@ -1,0 +1,1 @@
+Fresh clone with origin holding refs/tess/sync: tess sync creates tess.db with the remote's prefix and fetches every issue. A database that exists but can't be opened still fails with the open error, not an init. No remote ref and no database: not_initialized as now. Covered by a sync.txtar step and a unit test in internal/sync.
