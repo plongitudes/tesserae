@@ -1,0 +1,6 @@
+tess setup claude should warn when the repo already has another issue tracker wired into the agent, beads in particular, so two trackers don't compete for the agent's attention.
+
+Open questions:
+- What counts as installed: a .beads/ directory, a bd skill or bd hooks in .claude/, bd on PATH, or any of these?
+- Warn only, or offer to remove the bd hooks and skill? Removing another tool's setup is a bigger call than warning.
+- Whether the warning also belongs in tess init, where a bd user first meets tess.

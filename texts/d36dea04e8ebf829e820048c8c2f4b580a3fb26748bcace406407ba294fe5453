@@ -1,0 +1,1 @@
+show --field prints the four long texts byte for byte and every other value with a trailing newline, so --field title doesn't round-trip exactly. Lists print one value per line and objects as indented JSON; none of that is in the README. Loop 1 item 17 reflections. Decide the rule and write it down.

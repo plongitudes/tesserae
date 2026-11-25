@@ -1,0 +1,5 @@
+tess import PATH on a repo without a database should do what tess init does first, then import, so moving a bd repo over is one command.
+
+Open questions:
+- The prefix: init defaults it to the repo directory name. import could take it from the imported IDs when they all share one (bd files do), else the directory name, and accept --prefix as init does.
+- Whether the implicit init prints the init result or stays quiet. import on an initialised repo is unchanged.

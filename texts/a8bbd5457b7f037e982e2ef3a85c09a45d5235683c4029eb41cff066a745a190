@@ -1,0 +1,3 @@
+tess import is all-or-nothing and stops at the first problem (a cycle, a bad priority, a dangling link), so a file with several needs several runs. There is no dry run. Loop 1, Discovered (item 11).
+
+Decide: collect and report every problem in the file at once (and whether that is the default or a --check flag), and whether to drop child-blocks-epic links that ADR-0016 now refuses with a count instead of failing the file.

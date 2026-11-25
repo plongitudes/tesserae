@@ -1,0 +1,5 @@
+Dogfood found: tess init --prefix refuses uppercase (SR), while imported IDs like SR-014 keep their case, so new issues in that repo are sr-xxx next to SR-014. A rename option would let the prefix change after init.
+
+Open questions, to settle in an ADR before building:
+- ADR-0017 makes IDs immutable. Does a rename apply only to new issues (the super_rando case needs no more), or rewrite old IDs too? A rewrite touches every link, event, and, after loop 2, every sync peer.
+- Is this `tess init --prefix X` on an initialised repo, or a new `tess config` command? The prefix lives in the config table, which travels with sync.

@@ -1,0 +1,1 @@
+The -s substring search now matches IDs, as asked, which makes a short search noisy: with prefix api, -s api matches everything. Loop 1 item 18 reflections. Decide whether to match only the part after the prefix (one expression in ListIssues) or leave it.

@@ -1,0 +1,1 @@
+pflag picks the placeholder up only when the backticked word appears in the usage string, so descriptions became 'acceptance criteria: a TEXT, or "-" to read stdin' and 'priority N: 0 (most urgent) to 4'. Loop 1 item 22 reflections. Read every flag description once and reword where the placeholder fights the sentence; the help test only checks that the placeholder is there.

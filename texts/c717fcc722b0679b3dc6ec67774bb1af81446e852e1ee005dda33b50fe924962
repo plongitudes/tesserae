@@ -1,0 +1,3 @@
+acceptance/README.md says a hint is a one-line suggestion and that a command-line error's JSON hint is the use line. show has two synopsis lines, so its JSON hint is two lines joined by a newline and plain mode prints 'usage:' then '   or:'. Loop 1 item 22 reflections.
+
+Decide: accept and amend the README, or pick one form by whether --field was given.

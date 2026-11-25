@@ -1,0 +1,3 @@
+tess setup claude recognises the hooks it installed by the text 'tess hook session-start' in a hook command, so a user's own hook that happens to call that command is treated as tess's and replaced by re-running setup or removed by --remove. Loop 1, Discovered (item 12).
+
+Decide whether a narrower marker is needed (a comment or key in the hook entry), or whether 'calls tess hook' is a fine definition of 'tess's hook'.

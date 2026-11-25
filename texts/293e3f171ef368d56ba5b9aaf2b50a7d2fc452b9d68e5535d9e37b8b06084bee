@@ -1,0 +1,3 @@
+Today tess retire allows an issue that has live children. The children then read with parent: null until it is restored, while has_parent still fires if someone tries to give them a new parent (the link row is still there). Loop 1, Discovered (item 6).
+
+Decide: refuse (as done/omit do with has_open_children), warn and proceed, or allow silently as now. Refusing is consistent with ADR-0016; a --with-children later could cascade.
