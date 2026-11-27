@@ -57,10 +57,13 @@ tess link A B C blocks D E             several IDs on either side: the link type
 tess unlink A TYPE B                   same forms as link
 
 tess comment ID TEXT                   or "-" to read stdin
-tess import PATH                       old bd issues.jsonl
+tess import PATH [--prefix P]          old bd issues.jsonl; with no database yet, creates one
+                                       first, with --prefix or else the one prefix the IDs share
+                                       (lowercased); IDs with no one prefix need --prefix
 tess sync [--remote NAME] [--dry-run] fetch, merge, push the sync ref (ADR-0012, sync.md);
                                        remote defaults to origin, else the only remote;
-                                       --dry-run fetches and reports, writes nothing
+                                       --dry-run fetches and reports, writes nothing;
+                                       with no database yet, creates one from the remote's snapshot
 tess doctor [--remote]                 check the setup: git, database, remote, sync state, hooks,
                                        other trackers; --remote also tests the remote is reachable
 tess setup claude [--check|--remove]   write the Claude Code skill + hooks (ADR-0019)

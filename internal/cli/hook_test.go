@@ -119,6 +119,23 @@ func TestHookSessionStartSyncsFirstAndSaysJustNow(t *testing.T) {
 	}
 }
 
+func TestHookSessionStartOnAFreshCloneCreatesTheDatabase(t *testing.T) {
+	root := copies(t, "a")
+	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
+	created(t, "Shared")
+	must(t, "sync")
+
+	freshClone(t, root, "b")
+	r := start(t)
+	wantLastSync(t, r, "just now")
+	if !strings.Contains(r.stdout, "Ready to start: 1\n") {
+		t.Errorf("stdout is\n%s", r.stdout)
+	}
+	if _, err := os.Stat(filepath.Join(root, "b", ".git", "tess.db")); err != nil {
+		t.Error("the hook's sync made no database")
+	}
+}
+
 func TestHookSessionStartAfterACompactionDoesNotSync(t *testing.T) {
 	root := copies(t, "a")
 	inCopy(t, root, "a", "2026-01-01T00:00:00Z")

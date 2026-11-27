@@ -84,4 +84,8 @@ type Result struct {
 	Fetched, Pushed int
 	Resolved        []Resolution
 	DryRun          bool
+	// Initialized says the copy had no database and this sync created it
+	// from the remote's snapshot, with Prefix (sync.md, "Command surface").
+	Initialized bool
+	Prefix      string
 }

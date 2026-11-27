@@ -23,6 +23,39 @@ type ImportResult struct {
 	Skipped  int `json:"skipped"`
 }
 
+// ImportPrefix is the prefix a database created for an import should have
+// (cli.md, import): the one every record's ID starts with, before its first
+// dash, lowercased, since a prefix is lowercase while imported IDs keep
+// their case. Records whose IDs share no prefix, or whose prefix can't
+// start an ID, are invalid_argument with the hint to choose one.
+func ImportPrefix(r io.Reader) (string, error) {
+	const hint = "choose one with --prefix, e.g. `tess import PATH --prefix proj`"
+	records, err := readBD(r)
+	if err != nil {
+		return "", err
+	}
+	if len(records) == 0 {
+		return "", invalid("the file has no issues to take a prefix from", hint)
+	}
+	prefix := ""
+	for _, rec := range records {
+		p, _, ok := strings.Cut(rec.ID, "-")
+		if !ok || p == "" {
+			return "", invalid(fmt.Sprintf("ID %q has no prefix before a dash", rec.ID), hint)
+		}
+		p = strings.ToLower(p)
+		if prefix == "" {
+			prefix = p
+		} else if p != prefix {
+			return "", invalid(fmt.Sprintf("the IDs don't share one prefix: %q and %q", prefix, p), hint)
+		}
+	}
+	if !ValidPrefix(prefix) {
+		return "", invalid(fmt.Sprintf("%q can't be an ID prefix: it must be a lowercase letter followed by lowercase letters and digits", prefix), hint)
+	}
+	return prefix, nil
+}
+
 // unknownActor stands in where an old record doesn't say who.
 const unknownActor = "unknown"
 

@@ -13,11 +13,12 @@ import (
 
 // syncResult is sync's JSON (acceptance/README.md, "Sync output").
 type syncResult struct {
-	Remote   string           `json:"remote"`
-	Fetched  int              `json:"fetched"`
-	Pushed   int              `json:"pushed"`
-	DryRun   bool             `json:"dry_run"`
-	Resolved []syncResolution `json:"resolved"`
+	Remote      string           `json:"remote"`
+	Fetched     int              `json:"fetched"`
+	Pushed      int              `json:"pushed"`
+	DryRun      bool             `json:"dry_run"`
+	Initialized bool             `json:"initialized"`
+	Resolved    []syncResolution `json:"resolved"`
 }
 
 type syncResolution struct {
@@ -47,7 +48,10 @@ many issues came in and went out, or "up to date".
 
 The remote is origin, or the only remote when there is one. The issues
 travel on a ref of their own: no branch, commit or file of the working tree
-is touched. A sync that fails changes nothing; run it again.`,
+is touched. A sync that fails changes nothing; run it again.
+
+A fresh clone needs no init: when this copy has no database and the remote
+has issues, the first sync creates the database with the remote's prefix.`,
 		Example: `  tess sync
   tess sync --dry-run
   tess sync --remote backup
@@ -71,7 +75,7 @@ is touched. A sync that fails changes nothing; run it again.`,
 			}
 			out := syncResult{
 				Remote: res.Remote, Fetched: res.Fetched, Pushed: res.Pushed, DryRun: res.DryRun,
-				Resolved: []syncResolution{},
+				Initialized: res.Initialized, Resolved: []syncResolution{},
 			}
 			for _, r := range res.Resolved {
 				out.Resolved = append(out.Resolved, syncResolution{
@@ -80,6 +84,9 @@ is touched. A sync that fails changes nothing; run it again.`,
 				})
 			}
 			return a.print(out, func(w io.Writer) {
+				if res.Initialized {
+					fmt.Fprintln(w, initialisedLine(path, res.Prefix))
+				}
 				for _, r := range res.Resolved {
 					fmt.Fprintln(a.stderr, resolutionLine(r))
 				}
@@ -90,6 +97,12 @@ is touched. A sync that fails changes nothing; run it again.`,
 	cmd.Flags().StringVar(&remote, "remote", "", "the git remote `NAME` to sync with (default: origin, else the only remote)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "fetch, merge and report; push nothing and change nothing here")
 	return cmd
+}
+
+// initialisedLine is the first line of a sync or import that created the
+// database (acceptance/README.md, "Sync output" and "Command results").
+func initialisedLine(path, prefix string) string {
+	return fmt.Sprintf("initialised %s with prefix %s", path, prefix)
 }
 
 // eventTime is a resolution's time as JSON carries it: null for the zero

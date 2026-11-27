@@ -527,6 +527,89 @@ func TestRunWithoutADatabaseIsNotInitialized(t *testing.T) {
 	}
 }
 
+// freshCopy is a repository with the remote as origin and no database.
+func freshCopy(t *testing.T, remote string) Options {
+	t.Helper()
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "-q", ".")
+	if remote != "" {
+		gitRun(t, dir, "remote", "add", "origin", remote)
+	}
+	return Options{Dir: dir, DBPath: filepath.Join(dir, ".git", "tess.db"), Now: func() time.Time { return at("2026-01-02T00:00:00Z") }, Actor: "tester"}
+}
+
+func TestRunWithoutADatabaseCreatesOneFromTheRemotesSnapshot(t *testing.T) {
+	remote := newRemote(t)
+	a := newSyncCopy(t, remote)
+	id := a.create("2026-01-01T00:00:00Z", tracker.NewIssue{Title: "Shared"})
+	a.sync("2026-01-01T00:01:00Z")
+
+	o := freshCopy(t, remote)
+	res, err := Run(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Initialized || res.Prefix != "t" || res.Fetched != 1 || res.Pushed != 0 {
+		t.Errorf("result %+v; want initialized with prefix t, fetched 1, pushed 0", res)
+	}
+	snap, err := Load(context.Background(), o.DBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Config.Prefix != "t" || snap.Issues[id] == nil {
+		t.Errorf("the new database has prefix %q and issues %v", snap.Config.Prefix, snap.Issues)
+	}
+	if refAt(t, o.Dir, localRef) == "" {
+		t.Error("the local ref was not advanced")
+	}
+	res, err = Run(context.Background(), o)
+	if err != nil || res.Initialized {
+		t.Errorf("the second sync: %v, initialized %v", err, res != nil && res.Initialized)
+	}
+}
+
+func TestRunWithoutADatabaseAndNoRemoteIsNotInitialized(t *testing.T) {
+	o := freshCopy(t, "")
+	_, err := Run(context.Background(), o)
+	wantSyncCode(t, err, tracker.CodeNotInitialized)
+	if _, statErr := os.Stat(o.DBPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Error("a refused sync made a database")
+	}
+}
+
+func TestDryRunWithoutADatabaseCreatesNothing(t *testing.T) {
+	remote := newRemote(t)
+	a := newSyncCopy(t, remote)
+	a.create("2026-01-01T00:00:00Z", tracker.NewIssue{Title: "Shared"})
+	a.sync("2026-01-01T00:01:00Z")
+	o := freshCopy(t, remote)
+	o.DryRun = true
+	_, err := Run(context.Background(), o)
+	wantSyncCode(t, err, tracker.CodeNotInitialized)
+	if _, statErr := os.Stat(o.DBPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Error("a dry run made a database")
+	}
+}
+
+func TestRunNeverReplacesADatabaseItCannotOpen(t *testing.T) {
+	remote := newRemote(t)
+	a := newSyncCopy(t, remote)
+	a.create("2026-01-01T00:00:00Z", tracker.NewIssue{Title: "Shared"})
+	a.sync("2026-01-01T00:01:00Z")
+	o := freshCopy(t, remote)
+	if err := os.Mkdir(o.DBPath, 0o755); err != nil { // present, and not a database
+		t.Fatal(err)
+	}
+	_, err := Run(context.Background(), o)
+	var refusal *tracker.Error
+	if err == nil || (errors.As(err, &refusal) && refusal.Code == tracker.CodeNotInitialized) {
+		t.Errorf("err = %v; want a failure that is not not_initialized", err)
+	}
+	if info, statErr := os.Stat(o.DBPath); statErr != nil || !info.IsDir() {
+		t.Error("the thing in the database's place was replaced")
+	}
+}
+
 // --- the lock -----------------------------------------------------------------
 
 func TestRunIsBusyWhileAnotherSyncHoldsTheLock(t *testing.T) {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -78,6 +79,79 @@ func TestSyncWithoutARemoteIsNoRemote(t *testing.T) {
 func TestSyncBeforeInitIsNotInitialized(t *testing.T) {
 	inRepo(t, "repo")
 	wantError(t, tess(t, "sync", "--json"), "not_initialized")
+	if _, err := os.Stat(filepath.Join(".git", "tess.db")); err == nil {
+		t.Error("a sync with nothing to make a database from made one")
+	}
+}
+
+// freshClone is a clone of the copies' remote with no database: a new
+// machine, before any tess command.
+func freshClone(t *testing.T, root, name string) {
+	t.Helper()
+	dir := inDir(t, root, name)
+	gitIn(t, dir, "init", "-q", ".")
+	gitIn(t, dir, "remote", "add", "origin", filepath.Join(root, "remote.git"))
+	t.Setenv("TESS_NOW", "2026-01-02T00:00:00Z")
+}
+
+func TestSyncOnAFreshCloneCreatesTheDatabaseFromTheRemote(t *testing.T) {
+	root := copies(t, "a")
+	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
+	id := newID(t, "Shared")
+	must(t, "sync")
+
+	freshClone(t, root, "b")
+	r := must(t, "sync")
+	path := filepath.Join(root, "b", ".git", "tess.db")
+	if want := "initialised " + path + " with prefix t\nfetched 1 issue, pushed 0\n"; r.stdout != want || r.stderr != "" {
+		t.Errorf("stdout %q, stderr %q; want stdout %q", r.stdout, r.stderr, want)
+	}
+	if title := ok[object](t, "show", id)["title"]; title != "Shared" {
+		t.Errorf("after the sync, the issue reads %v", title)
+	}
+	got := ok[object](t, "sync", "--json")
+	if got["initialized"] != false || got["fetched"] != 0.0 {
+		t.Errorf("the second sync says %v", got)
+	}
+}
+
+func TestSyncOnAFreshCloneSaysInitializedInJSON(t *testing.T) {
+	root := copies(t, "a")
+	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
+	created(t, "Shared")
+	must(t, "sync")
+	freshClone(t, root, "b")
+	got := ok[object](t, "sync", "--json")
+	if got["initialized"] != true || got["fetched"] != 1.0 {
+		t.Errorf("sync says %v", got)
+	}
+}
+
+func TestSyncWithNoRemoteSnapshotMakesNoDatabase(t *testing.T) {
+	root := copies(t, "a") // a never synced: the remote has no ref
+	freshClone(t, root, "b")
+	wantError(t, tess(t, "sync", "--json"), "not_initialized")
+	if _, err := os.Stat(filepath.Join(root, "b", ".git", "tess.db")); err == nil {
+		t.Error("a sync with no snapshot to make a database from made one")
+	}
+}
+
+func TestSyncNeverReplacesADatabaseItCannotOpen(t *testing.T) {
+	root := copies(t, "a")
+	inCopy(t, root, "a", "2026-01-01T00:00:00Z")
+	created(t, "Shared")
+	must(t, "sync")
+	freshClone(t, root, "b")
+	path := filepath.Join(root, "b", ".git", "tess.db")
+	if err := os.Mkdir(path, 0o755); err != nil { // present, and not a database
+		t.Fatal(err)
+	}
+	if r := tess(t, "sync", "--json"); r.code == 0 || strings.Contains(r.stderr, "not_initialized") {
+		t.Errorf("exit %d, stderr %q; want a failure that is not not_initialized", r.code, r.stderr)
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		t.Error("the thing in the database's place was replaced")
+	}
 }
 
 func TestSyncPushesThenIsUpToDate(t *testing.T) {
@@ -86,7 +160,7 @@ func TestSyncPushesThenIsUpToDate(t *testing.T) {
 	created(t, "Shared")
 
 	r := must(t, "sync", "--json")
-	want := `{"remote":"origin","fetched":0,"pushed":1,"dry_run":false,"resolved":[]}` + "\n"
+	want := `{"remote":"origin","fetched":0,"pushed":1,"dry_run":false,"initialized":false,"resolved":[]}` + "\n"
 	if r.stdout != want || r.stderr != "" {
 		t.Errorf("stdout %q, stderr %q; want %q and nothing", r.stdout, r.stderr, want)
 	}
@@ -126,7 +200,7 @@ func TestSyncPrintsAResolutionOnStderrAndTheSummaryOnStdout(t *testing.T) {
 func TestSyncJSONCarriesTheResolutionAndNothingOnStderr(t *testing.T) {
 	_, id := titleConflict(t)
 	r := must(t, "sync", "--json")
-	want := `{"remote":"origin","fetched":1,"pushed":1,"dry_run":false,"resolved":[` +
+	want := `{"remote":"origin","fetched":1,"pushed":1,"dry_run":false,"initialized":false,"resolved":[` +
 		`{"issue":"` + id + `","field":"title","kept":"From b","dropped":"From a","won":"remote","reason":"later",` +
 		`"kept_at":"2026-01-02T00:00:05Z","dropped_at":"2026-01-02T00:00:00Z"}]}` + "\n"
 	if r.stdout != want || r.stderr != "" {
@@ -147,7 +221,7 @@ func TestSyncDryRunSaysWhatItWouldMoveAndMovesNothing(t *testing.T) {
 		t.Errorf("stdout %q, stderr %q", r.stdout, r.stderr)
 	}
 	r = must(t, "sync", "--dry-run", "--json")
-	want := `{"remote":"origin","fetched":1,"pushed":1,"dry_run":true,"resolved":[]}` + "\n"
+	want := `{"remote":"origin","fetched":1,"pushed":1,"dry_run":true,"initialized":false,"resolved":[]}` + "\n"
 	if r.stdout != want {
 		t.Errorf("stdout %q, want %q", r.stdout, want)
 	}

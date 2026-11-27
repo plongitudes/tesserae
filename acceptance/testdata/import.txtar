@@ -84,6 +84,57 @@ capture N -- tess create 'New after import' --json
 idshape $N
 stdout '"id": *"t-'
 
+# Without a database, import creates one with the prefix the IDs share
+# (README "Command results").
+cd $WORK
+exec git init -q fresh
+cd fresh
+exec tess import $WORK/old.jsonl --json
+json stdout .initialized true
+json stdout .imported 7
+exec tess doctor --json
+json stdout .[3].detail bd
+exec tess import $WORK/old.jsonl --json
+json stdout .initialized false
+json stdout .skipped 7
+
+# In plain mode the first line says so, and --prefix chooses another.
+cd $WORK
+exec git init -q chosen
+cd chosen
+exec tess import $WORK/old.jsonl --prefix proj
+stdout '^initialised .*tess.db with prefix proj$'
+stdout 'imported 7, skipped 0'
+capture M -- tess create 'New after import' --json
+stdout '"id": *"proj-'
+
+# An uppercase prefix in the file becomes the lowercase one new IDs need;
+# the imported IDs keep their case.
+cd $WORK
+exec git init -q upper
+cd upper
+exec tess import $WORK/upper.jsonl --json
+json stdout .initialized true
+exec tess doctor --json
+json stdout .[3].detail sr
+exec tess show SR-014 --json
+json stdout .id SR-014
+
+# IDs with no one prefix: refused with a hint to choose, nothing created.
+cd $WORK
+exec git init -q mixed
+cd mixed
+! exec tess import $WORK/mixed.jsonl --json
+json stderr .error.code invalid_argument
+stderr 'prefix'
+! exists .git/tess.db
+exec tess import $WORK/mixed.jsonl --prefix m --json
+json stdout .imported 2
+
+# --prefix on a repository that has a database is refused.
+! exec tess import $WORK/old.jsonl --prefix other --json
+json stderr .error.code invalid_argument
+
 -- old.jsonl --
 {"id":"bd-a1","title":"Old epic","description":"The description","design":"The design","status":"open","priority":1,"issue_type":"epic","created_at":"2025-06-01T10:00:00Z","created_by":"olduser","updated_at":"2025-06-02T10:00:00Z","labels":["legacy","auth"],"comments":[{"id":1,"issue_id":"bd-a1","author":"olduser","text":"An old comment","created_at":"2025-06-01T11:00:00Z"}]}
 {"id":"bd-a1.1","title":"Old child","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:05:00Z","created_by":"olduser","updated_at":"2025-06-01T10:05:00Z","dependencies":[{"issue_id":"bd-a1.1","depends_on_id":"bd-a1","type":"parent-child","created_at":"2025-06-01T10:05:00Z","created_by":"olduser"}]}
@@ -92,6 +143,11 @@ stdout '"id": *"t-'
 {"id":"bd-d4","title":"Deferred work","status":"deferred","defer_until":"2026-03-01T00:00:00Z","priority":3,"issue_type":"task","created_at":"2025-06-05T10:00:00Z","created_by":"olduser","updated_at":"2025-06-05T10:00:00Z","dependencies":[{"issue_id":"bd-d4","depends_on_id":"bd-a1","type":"duplicates","created_at":"2025-06-05T10:00:00Z","created_by":"olduser"}]}
 {"id":"bd-e5","title":"Finished work","status":"closed","close_reason":"Fixed in v2","priority":2,"issue_type":"bug","created_at":"2025-06-06T10:00:00Z","created_by":"olduser","updated_at":"2025-06-07T10:00:00Z","closed_at":"2025-06-07T10:00:00Z"}
 {"id":"bd-f6","title":"Deleted long ago","status":"tombstone","priority":2,"issue_type":"task","created_at":"2025-06-08T10:00:00Z","created_by":"olduser","updated_at":"2025-07-01T00:00:00Z","deleted_at":"2025-07-01T00:00:00Z"}
+-- upper.jsonl --
+{"id":"SR-014","title":"Upper","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:00:00Z","updated_at":"2025-06-01T10:00:00Z"}
+-- mixed.jsonl --
+{"id":"aa-1","title":"A","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:00:00Z","updated_at":"2025-06-01T10:00:00Z"}
+{"id":"bb-2","title":"B","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:00:00Z","updated_at":"2025-06-01T10:00:00Z"}
 -- cycle.jsonl --
 {"id":"bd-x1","title":"X","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:00:00Z","updated_at":"2025-06-01T10:00:00Z","dependencies":[{"issue_id":"bd-x1","depends_on_id":"bd-x2","type":"blocks"}]}
 {"id":"bd-x2","title":"Y","status":"open","priority":2,"issue_type":"task","created_at":"2025-06-01T10:00:00Z","updated_at":"2025-06-01T10:00:00Z","dependencies":[{"issue_id":"bd-x2","depends_on_id":"bd-x1","type":"blocks"}]}

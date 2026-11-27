@@ -78,7 +78,7 @@ Used by `create`, `update`, `show`, `list`, and `ready`:
 | `link`, `unlink` | an array of `{"from": id, "type": t, "to": id}`, one per pair, normalised to the canonical direction (`blocks`: blocker → blocked; `parent`: parent → child; `discovered-from`: discovered → origin). `tess link A B blocks C D` makes every left × right pair (A→C, A→D, B→C, B→D), in that order, in one transaction: any refusal means no link is made. Adding a link that already exists, in either wording, is a no-op success returning the existing link. Plain output is one `linked A blocks C` line per pair |
 | `comment` | the comment object |
 | `init` | `{"prefix": p, "database": path}`; `database` is absolute |
-| `import` | `{"imported": n, "skipped": n}` |
+| `import` | `{"imported": n, "skipped": n, "initialized": bool}`. On a repository with no database, import creates one first (`initialized` true) with `--prefix`, else the one prefix every imported ID shares, lowercased; IDs that share no prefix are `invalid_argument` with the hint to pass `--prefix`, and nothing is created. `--prefix` on a repository that has a database is `invalid_argument`. Plain output then starts with `initialised <path> with prefix <p>` |
 | `setup claude` | `{"written": [paths], "unchanged": [paths]}`; paths are relative to the repo root. Re-running is a successful no-op that changes no file; only `--check` exits 1 when something is missing |
 
 Ordering for `list` and `ready`: priority ascending, then `created_at`, then `id`.
@@ -145,7 +145,7 @@ fetched 2 issues, pushed 1, resolved 1
 The summary is `fetched N issues, pushed N, resolved N` (`issue` when N is 1; `resolved` only when non-zero), `up to date` when nothing moved either way, and `would push N` (plus `would fetch N`) with `--dry-run`. `fetched` counts issues the merge changed from this copy's point of view (new or changed from the remote); `pushed` counts issues changed from the remote's (new or changed here). With `--json`, stdout is:
 
 ```json
-{"remote": "origin", "fetched": 2, "pushed": 1, "dry_run": false,
+{"remote": "origin", "fetched": 2, "pushed": 1, "dry_run": false, "initialized": false,
  "resolved": [ {"issue": "t-a3f", "field": "title", "kept": "From b", "dropped": "From a", "won": "remote", "reason": "later",
                 "kept_at": "2026-01-03T00:00:00Z", "dropped_at": "2026-01-02T00:00:00Z"} ]}
 ```
@@ -153,6 +153,8 @@ The summary is `fetched N issues, pushed N, resolved N` (`issue` when N is 1; `r
 `field` is a unit of the merge: a scalar field name, `status` (the status and its reason together; `kept`/`dropped` are the status values), or a collection name (`labels`, `blocked_by`, `related`, `discovered_from`) with the element as `kept`/`dropped`. `won` is `local` or `remote`. `reason` is `later` (the later event won), `retired` (dropped because the issue had been retired first; `kept` is the retiring side's value), or `cycle` (a link dropped to keep the hierarchy rules; `field` is `blocked_by` or `parent`, `dropped` the other issue's ID, `kept` null). `kept_at` and `dropped_at` are the times of the events that decided the unit on each side, as the plain output prints them: for `later`, each side's latest new event; for `retired`, `kept_at` is the retire's time; for `cycle`, `dropped_at` is the dropped link's event. Null when that side had no event. `resolved` is always an array.
 
 `--dry-run` fetches, merges and reports; it pushes nothing, writes nothing to the database, and leaves `refs/tess/sync` where it was.
+
+A copy with no database file: when the remote's ref holds a snapshot, sync creates the database with the snapshot's prefix and then syncs as usual; `initialized` is true, and plain output starts with the line `initialised <path> with prefix <p>`. When the remote has no ref, or there is no remote, sync is `not_initialized` and creates no file. A database file that is present but cannot be opened is that error (`internal`), never replaced.
 
 ### Doctor output (suite decision)
 
@@ -174,7 +176,7 @@ With `--json`, stdout is an array of `{"check", "level", "detail", "fix"}` in th
 
 ### Hooks
 
-`tess hook session-start` runs the sync first (ten-second deadline, unless `source` is `compact`) and its `Last sync` fact becomes `Last sync: just now` after a success, `Last sync: never` when the copy has never synced and the sync could not run (no remote), and `Last sync: not synced (<code>)` when the sync failed for another reason; a copy that synced before and fails now says `Last sync: <when>, not synced now (<code>)`. When the ten-second deadline ended the sync, the code reads `timed out; run tess sync to finish any login`, and `auth_failed` reads `auth_failed; run tess sync to log in`, since a credential prompt may have been waiting on the user. The hook runs git with its terminal prompt off. "Just now" is under a minute by the clock. The hook still exits 0 and prints nothing to stderr.
+`tess hook session-start` runs the sync first (ten-second deadline, unless `source` is `compact`) and its `Last sync` fact becomes `Last sync: just now` after a success, `Last sync: never` when the copy has never synced and the sync could not run (no remote), and `Last sync: not synced (<code>)` when the sync failed for another reason; a copy that synced before and fails now says `Last sync: <when>, not synced now (<code>)`. When the ten-second deadline ended the sync, the code reads `timed out; run tess sync to finish any login`, and `auth_failed` reads `auth_failed; run tess sync to log in`, since a credential prompt may have been waiting on the user. The hook runs git with its terminal prompt off. "Just now" is under a minute by the clock. On a fresh clone with no database, the hook's sync creates it from the remote as `tess sync` would, and the facts follow; with no remote snapshot to create it from, the hook stays silent as before. The hook still exits 0 and prints nothing to stderr.
 
 ### The simulator (`sim/`)
 

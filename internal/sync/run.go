@@ -53,9 +53,6 @@ func run(ctx context.Context, o Options, s settings) (*Result, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	if _, err := os.Stat(o.DBPath); errors.Is(err, fs.ErrNotExist) {
-		return nil, tracker.NotInitialized()
-	}
 	result, err := locked(ctx, o, s)
 	if err != nil && !o.DryRun && ctx.Err() == nil {
 		// Whatever code the sync failed with, the choice of remote included,
@@ -70,20 +67,82 @@ func run(ctx context.Context, o Options, s settings) (*Result, error) {
 	return result, err
 }
 
-// locked chooses the remote, takes the lock and runs the exchange under it.
-// The lock comes after the remote, so a sync with no remote makes no lock
-// file.
+// locked chooses the remote, creates the database when the copy has none,
+// takes the lock and runs the exchange under it. The lock comes after the
+// remote and the database, so a sync that is refused before either makes
+// no lock file.
 func locked(ctx context.Context, o Options, s settings) (*Result, error) {
-	transport, err := gitref.Open(ctx, git.Repo{Dir: o.Dir, NoPrompt: o.NoPrompt}, o.Remote)
+	initialise, err := absent(o.DBPath)
 	if err != nil {
 		return nil, err
+	}
+	transport, err := gitref.Open(ctx, git.Repo{Dir: o.Dir, NoPrompt: o.NoPrompt}, o.Remote)
+	if err != nil {
+		var refusal *tracker.Error
+		if initialise && errors.As(err, &refusal) && refusal.Code == CodeNoRemote {
+			// With nothing to make a database from, the missing database is
+			// the thing to say: `tess init` is the way forward.
+			return nil, tracker.NotInitialized()
+		}
+		return nil, err
+	}
+	if initialise {
+		if err := initialiseFrom(ctx, o, transport); err != nil {
+			return nil, err
+		}
 	}
 	release, err := acquire(ctx, o.DBPath, s.lockWait)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	return exchange(ctx, o, s, transport)
+	result, err := exchange(ctx, o, s, transport)
+	if result != nil {
+		result.Initialized = initialise
+	}
+	return result, err
+}
+
+// absent reports whether the database file is not there. A file that is
+// there but can't be opened is not absent: whatever is wrong with it is
+// reported by the open, and it is never replaced.
+func absent(dbPath string) (bool, error) {
+	_, err := os.Stat(dbPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	return false, err
+}
+
+// initialiseFrom creates the database of a copy that has none, with the
+// prefix of the remote's snapshot (sync.md, "Command surface"), so that a
+// fresh clone of a tracked repository needs no `tess init`. A remote with
+// no snapshot leaves nothing to make one from: not_initialized, and no
+// file. --dry-run writes nothing, a database included.
+func initialiseFrom(ctx context.Context, o Options, transport *gitref.Transport) error {
+	if o.DryRun {
+		return tracker.NotInitialized()
+	}
+	theirs, err := transport.Fetch(ctx)
+	if err != nil {
+		return err
+	}
+	if !theirs.Present() {
+		return tracker.NotInitialized()
+	}
+	snap, err := FromFiles(theirs.Files)
+	if err != nil {
+		return fmt.Errorf("the snapshot on %s: %w", transport.Remote(), err)
+	}
+	if snap.Config.Format != Format {
+		return formatUnsupported(snap.Config.Format)
+	}
+	err = tracker.Init(ctx, o.DBPath, snap.Config.Prefix)
+	var refusal *tracker.Error
+	if errors.As(err, &refusal) && refusal.Code == tracker.CodeAlreadyInitialized {
+		return nil // another sync of this copy got here first
+	}
+	return err
 }
 
 // exchange is the sync under the lock: up to pushAttempts rounds of load,
@@ -127,6 +186,7 @@ func exchange(ctx context.Context, o Options, s settings, transport *gitref.Tran
 			Pushed:   issuesChanged(theirsTree.Files, files),
 			Resolved: resolved,
 			DryRun:   o.DryRun,
+			Prefix:   merged.Config.Prefix,
 		}
 		if o.DryRun {
 			return result, nil

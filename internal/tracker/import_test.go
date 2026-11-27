@@ -1,6 +1,7 @@
 package tracker_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,33 @@ func at(s string) time.Time {
 		panic(err)
 	}
 	return t
+}
+
+func TestImportPrefixIsTheOneTheIDsShareLowercased(t *testing.T) {
+	for name, tc := range map[string]struct {
+		file, want, wrong string
+	}{
+		"one prefix":   {file: "{\"id\":\"bd-a1\",\"title\":\"A\",\"priority\":2}\n{\"id\":\"bd-a1.1\",\"title\":\"B\",\"priority\":2}\n", want: "bd"},
+		"uppercase":    {file: "{\"id\":\"SR-014\",\"title\":\"A\",\"priority\":2}\n", want: "sr"},
+		"two prefixes": {file: "{\"id\":\"aa-1\",\"title\":\"A\",\"priority\":2}\n{\"id\":\"bb-2\",\"title\":\"B\",\"priority\":2}\n", wrong: "share one prefix"},
+		"no dash":      {file: "{\"id\":\"plain\",\"title\":\"A\",\"priority\":2}\n", wrong: "no prefix"},
+		"digits first": {file: "{\"id\":\"9x-1\",\"title\":\"A\",\"priority\":2}\n", wrong: "can't be an ID prefix"},
+		"empty":        {file: "", wrong: "no issues"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := tracker.ImportPrefix(strings.NewReader(tc.file))
+			if tc.wrong == "" {
+				if err != nil || got != tc.want {
+					t.Errorf("ImportPrefix = %q, %v; want %q", got, err, tc.want)
+				}
+				return
+			}
+			var te *tracker.Error
+			if !errors.As(err, &te) || te.Code != tracker.CodeInvalidArgument || !strings.Contains(te.Message, tc.wrong) || !strings.Contains(te.Hint, "--prefix") {
+				t.Errorf("ImportPrefix = %q, %v; want invalid_argument saying %q with a --prefix hint", got, err, tc.wrong)
+			}
+		})
+	}
 }
 
 func TestImportKeepsTheIDFieldsTimestampsLabelsAndComments(t *testing.T) {

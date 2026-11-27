@@ -360,6 +360,72 @@ exec tess hook session-start
 stdout 'Last sync: never'
 ! stderr .
 
+# A copy with no database takes it from the remote (sync.md, "Command
+# surface"): the first sync creates the database with the remote's prefix,
+# then syncs as usual.
+cd $WORK
+exec git init -q f
+cd f
+exec git remote add origin $WORK/remote.git
+exec tess sync --json
+json stdout .initialized true
+json stdout .remote origin
+json stdout .pushed 0
+exec tess show $A --json
+json stdout .title 'Later from a'
+exec tess doctor --json
+json stdout .[3].detail t
+exec tess sync --json
+json stdout .initialized false
+
+# In plain mode the first line says so.
+cd $WORK
+exec git init -q g
+cd g
+exec git remote add origin $WORK/remote.git
+exec tess sync
+stdout '^initialised .*tess.db with prefix t$'
+stdout 'fetched '
+! stderr .
+
+# A remote with no sync ref initialises nothing, nor does no remote at all:
+# not_initialized, and no database.
+cd $WORK
+exec git init -q --bare empty.git
+exec git init -q h
+cd h
+exec git remote add origin $WORK/empty.git
+! exec tess sync --json
+json stderr .error.code not_initialized
+! exists .git/tess.db
+cd $WORK
+exec git init -q i
+cd i
+! exec tess sync --json
+json stderr .error.code not_initialized
+! exists .git/tess.db
+
+# A database that is there but can't be opened is never replaced.
+cd $WORK
+exec git init -q j
+cd j
+exec git remote add origin $WORK/remote.git
+mkdir .git/tess.db
+! exec tess sync --json
+json stderr .error.code internal
+
+# The session-start hook on a fresh clone gets the database the same way.
+cd $WORK
+exec git init -q k
+cd k
+exec git remote add origin $WORK/remote.git
+stdin $WORK/startup.json
+exec tess hook session-start
+stdout 'This repository tracks its issues with tess.'
+stdout 'Last sync: just now'
+! stderr .
+exists .git/tess.db
+
 -- pre-receive --
 #!/bin/sh
 echo "refused by policy" >&2
