@@ -105,6 +105,28 @@ func TestImportPrefixIsRefusedWhereThereIsADatabase(t *testing.T) {
 	}
 }
 
+func TestImportTakesADirectoryHoldingTheFile(t *testing.T) {
+	inInitialisedRepo(t)
+	if err := os.MkdirAll(filepath.Join("old", ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join("old", ".beads", "issues.jsonl"), oldIssues)
+	if got := ok[object](t, "import", "old"); got["imported"] != 2.0 {
+		t.Errorf("import of the repository printed %v", got)
+	}
+	if got := ok[object](t, "import", filepath.Join("old", ".beads")); got["skipped"] != 2.0 {
+		t.Errorf("import of the .beads directory printed %v", got)
+	}
+	if err := os.Mkdir("empty", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := tess(t, "import", "empty", "--json")
+	wantError(t, r, "invalid_argument")
+	if !strings.Contains(r.stderr, filepath.Join("empty", ".beads", "issues.jsonl")) {
+		t.Errorf("the refusal does not name the file it looked for: %s", r.stderr)
+	}
+}
+
 func TestImportRefusalsKeepTheirCodes(t *testing.T) {
 	inInitialisedRepo(t)
 	wantError(t, tess(t, "import", "missing.jsonl", "--json"), "invalid_argument")

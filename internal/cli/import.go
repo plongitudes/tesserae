@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -26,7 +27,8 @@ func (a *app) importCommand() *cobra.Command {
 		Short: "Bring in the issues of an old bd issues.jsonl, keeping their IDs",
 		Long: `Bring in the issues of an old bd issues.jsonl, keeping their IDs.
 
-Statuses and link types are mapped to the ones tess has; comments, labels and
+PATH is the file, or a directory holding it: a repository with a .beads
+directory, or that directory itself. Statuses and link types are mapped to the ones tess has; comments, labels and
 timestamps are carried over. Either the whole file is imported or none of it.
 An issue whose ID is already here is skipped, so importing a file again adds
 only what is new.
@@ -34,9 +36,9 @@ only what is new.
 A repository with no database yet gets one first, so moving over from bd is
 one command. Its prefix is --prefix, or else the one prefix every imported
 ID starts with, lowercased; the imported IDs keep their case.`,
-		Example: `  tess import .beads/issues.jsonl
+		Example: `  tess import .                 # this repository's .beads/issues.jsonl
   tess import .beads/issues.jsonl --prefix proj
-  tess import ../old-checkout/.beads/issues.jsonl --json`,
+  tess import ../old-checkout --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -44,13 +46,17 @@ ID starts with, lowercased; the imported IDs keep their case.`,
 			if err != nil {
 				return err
 			}
+			file, err := importFile(args[0])
+			if err != nil {
+				return err
+			}
 			// The file is read once and kept: it decides the prefix before
 			// there is a database to import it into.
-			data, err := os.ReadFile(args[0])
+			data, err := os.ReadFile(file)
 			if err != nil {
 				return invalidArgument(
-					fmt.Sprintf("can't read %s: %v", args[0], errors.Unwrap(err)),
-					"import takes the path of bd's issues.jsonl, usually .beads/issues.jsonl")
+					fmt.Sprintf("can't read %s: %v", file, errors.Unwrap(err)),
+					"import takes bd's issues.jsonl, or a directory holding .beads/issues.jsonl")
 			}
 			initialised, err := initialiseForImport(cmd, path, data, &prefix)
 			if err != nil {
@@ -72,6 +78,26 @@ ID starts with, lowercased; the imported IDs keep their case.`,
 	}
 	cmd.Flags().StringVar(&prefix, "prefix", "", "the `PREFIX` new issue IDs start with, when the import creates the database (default: the prefix the imported IDs share)")
 	return cmd
+}
+
+// importFile is the file an import reads for PATH: PATH itself, or for a
+// directory the first of PATH/.beads/issues.jsonl and PATH/issues.jsonl
+// that is there (cli.md, import). A directory with neither is refused,
+// naming both.
+func importFile(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return path, nil // a file, or nothing: the read says what is wrong
+	}
+	candidates := []string{filepath.Join(path, ".beads", "issues.jsonl"), filepath.Join(path, "issues.jsonl")}
+	for _, c := range candidates {
+		if info, err := os.Stat(c); err == nil && !info.IsDir() {
+			return c, nil
+		}
+	}
+	return "", invalidArgument(
+		fmt.Sprintf("%s is a directory with no bd issues: neither %s nor %s is there", path, candidates[0], candidates[1]),
+		"give the path of bd's issues.jsonl, or of a repository that has a .beads directory")
 }
 
 // initialiseForImport creates the database when the repository has none

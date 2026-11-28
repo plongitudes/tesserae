@@ -57,7 +57,8 @@ tess link A B C blocks D E             several IDs on either side: the link type
 tess unlink A TYPE B                   same forms as link
 
 tess comment ID TEXT                   or "-" to read stdin
-tess import PATH [--prefix P]          old bd issues.jsonl; with no database yet, creates one
+tess import PATH [--prefix P]          old bd issues.jsonl, or a directory holding .beads/issues.jsonl
+                                       (or issues.jsonl); with no database yet, creates one
                                        first, with --prefix or else the one prefix the IDs share
                                        (lowercased); IDs with no one prefix need --prefix
 tess sync [--remote NAME] [--dry-run] fetch, merge, push the sync ref (ADR-0012, sync.md);

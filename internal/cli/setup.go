@@ -377,7 +377,12 @@ It writes two files at the top of the worktree, meant to be committed:
                                  SessionEnd hooks that run ` + "`tess hook ...`" + `
 
 Everything else in settings.json is kept. Running it again changes nothing
-unless a file is missing or out of date.`,
+unless a file is missing or out of date.
+
+If another issue tracker is wired into Claude Code here too, by hooks, a
+skill or an MCP server, the agent may follow either one; tess does not look
+for other trackers beyond what tess doctor reports. Take the other one out,
+or tess, so that one tracker speaks.`,
 		Example: `  tess setup claude
   tess setup claude --check     # exit status 1 if anything is missing or out of date
   tess setup claude --remove    # take out only what tess added`,

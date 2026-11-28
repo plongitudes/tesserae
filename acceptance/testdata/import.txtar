@@ -131,6 +131,21 @@ stderr 'prefix'
 exec tess import $WORK/mixed.jsonl --prefix m --json
 json stdout .imported 2
 
+# A directory stands for its .beads/issues.jsonl, or its issues.jsonl.
+cd $WORK
+exec git init -q dir
+cd dir
+mkdir .beads
+cp $WORK/old.jsonl .beads/issues.jsonl
+exec tess import . --json
+json stdout .imported 7
+exec tess import .beads --json
+json stdout .skipped 7
+mkdir empty
+! exec tess import empty --json
+json stderr .error.code invalid_argument
+stderr 'issues.jsonl'
+
 # --prefix on a repository that has a database is refused.
 ! exec tess import $WORK/old.jsonl --prefix other --json
 json stderr .error.code invalid_argument

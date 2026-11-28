@@ -65,7 +65,7 @@ This writes two files in the worktree, meant to be committed so every clone and 
 - `.claude/skills/tess/SKILL.md`, a skill that tells Claude Code when and how to use tess: the work loop, the statuses, the links.
 - `.claude/settings.json`, which allows `tess` commands and adds two hooks. At the start of a session, `tess hook session-start` syncs (with a ten-second deadline) and prints a few facts: how many issues are ready, how many in progress, when the last sync was. At the end, `tess hook session-end` starts a sync in the background. Both are wrapped so a machine without tess stays quiet.
 
-`tess setup claude --check` says whether the files are current, and `--remove` takes them out. Changes made by a Claude Code session are recorded as `claude:<session>`; set `TESS_ACTOR` to record them as something else.
+`tess setup claude --check` says whether the files are current, and `--remove` takes them out. One caveat: if another issue tracker is wired into Claude Code in the same repository, by hooks, a skill or an MCP server, the agent may follow either one. tess doesn't try to recognise other trackers (beyond `tess doctor` noticing a beads setup, since `tess import` reads one), so it's on you to leave one tracker speaking. Changes made by a Claude Code session are recorded as `claude:<session>`; set `TESS_ACTOR` to record them as something else.
 
 ## Sync
 
