@@ -568,6 +568,43 @@ func TestRunWithoutADatabaseCreatesOneFromTheRemotesSnapshot(t *testing.T) {
 	}
 }
 
+// A database deleted by hand, with the local ref still there: the merge
+// reads the missing issues as unchanged here, so the copy refills from the
+// remote and nothing on the remote is undone.
+func TestRunRefillsADeletedDatabaseWithoutUndoingTheRemote(t *testing.T) {
+	remote := newRemote(t)
+	a := newSyncCopy(t, remote)
+	id := a.create("2026-01-01T00:00:00Z", tracker.NewIssue{Title: "Shared"})
+	a.sync("2026-01-01T00:01:00Z")
+	b := newSyncCopy(t, remote)
+	b.sync("2026-01-01T00:02:00Z")
+	b.update("2026-01-01T00:03:00Z", id, tracker.Patch{Title: ptr("Changed on b")})
+	b.sync("2026-01-01T00:04:00Z")
+
+	if err := a.closeDB(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(a.db); err != nil {
+		t.Fatal(err)
+	}
+	o := a.options()
+	o.Now = func() time.Time { return at("2026-01-01T00:05:00Z") }
+	res, err := Run(a.ctx, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Initialized || res.Fetched != 1 || res.Pushed != 0 {
+		t.Errorf("result %+v; want initialized, fetched 1, pushed 0", res)
+	}
+	snap, err := Load(a.ctx, a.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issue := snap.Issues[id]; issue == nil || issue.Title != "Changed on b" {
+		t.Errorf("the refilled issue is %+v, want b's title", issue)
+	}
+}
+
 func TestRunWithoutADatabaseAndNoRemoteIsNotInitialized(t *testing.T) {
 	o := freshCopy(t, "")
 	_, err := Run(context.Background(), o)

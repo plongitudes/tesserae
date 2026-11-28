@@ -16,11 +16,12 @@ import (
 // A copy is a database driven through the tracker with a clock the test
 // sets.
 type testCopy struct {
-	t   *testing.T
-	ctx context.Context
-	db  string
-	now time.Time
-	tr  tracker.Tracker
+	t       *testing.T
+	ctx     context.Context
+	db      string
+	now     time.Time
+	tr      tracker.Tracker
+	closeDB func() error // closes the tracker's store; a test that deletes the database calls it first
 }
 
 func newCopy(t *testing.T) *testCopy {
@@ -38,7 +39,7 @@ func newCopy(t *testing.T) *testCopy {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = closeDB() })
-	c.tr = tr
+	c.tr, c.closeDB = tr, closeDB
 	return c
 }
 
